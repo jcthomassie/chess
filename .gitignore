@@ -1,0 +1,9 @@
+# Python directories
+__pycache__/
+build/
+dist/
+
+# Python files
+*.egg*
+*.pyc
+*.pyd
