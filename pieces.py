@@ -331,6 +331,8 @@ class Board:
         """
         moves = [ ]
         for square in self.flattened():
+            if square == piece.square:
+                continue
             target = self[square]
             if target is None: 
                 # EMPTY case
