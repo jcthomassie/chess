@@ -7,20 +7,29 @@ Created on Fri Mar  8 09:57:04 2019
 import traceback
 import copy
 
-WHITE = 0
-BLACK = 1
+###############################################################################
+#  GLOBALS                                                                    #
+###############################################################################
 
-DRAW = -1
-
+# BOARD PROPERTIES
 N_RANKS = 8
 N_FILES = 8
 RANK_ZERO = "8"
 FILE_ZERO = "A"
 
+# COLORS / RESULTS
+WHITE = 0
+BLACK = 1
+DRAW = -1
+
+# COLOR INFO
 FLIP_COLOR = dict(( (WHITE, BLACK), (BLACK, WHITE) ))
 COLOR_ORIENTATION = dict(( (WHITE, -1), (BLACK, 1) ))
 COLOR_NAME = dict(((WHITE, "White"), (BLACK, "Black"), (DRAW, "Draw")))
 
+###############################################################################
+#  BOARD CORE                                                                 #
+###############################################################################
 class Square:
     """
     Board square representation. Allows flexible conversion between
@@ -250,10 +259,16 @@ class Board:
             return True
         return False
     
-    def enpassant(self, pawn, target):
+    def en_passant(self, pawn, target):
+        """
+        Handle en passant captures.
+        """
         pass
     
-    def promote_pawn(self, pawn):
+    def promote(self, pawn):
+        """
+        Handle pawn promotions.
+        """
         pass
     
     def get_attackers(self, square, color):
@@ -666,18 +681,30 @@ class Board:
 class InvalidMoveError(Exception):
     pass
 
-
+###############################################################################
+#  PIECES                                                                     #
+###############################################################################
 class Piece:
-    
-    def __init__(self, position, color=WHITE):
-        if isinstance(position, Square):
-            self.square = position
-        else:
-            self.square = Square(position)
+    """
+    Base class for all chess pieces.
+    """
+    def __init__(self, locus, color=WHITE):
+        # Core attributes
         self.color = color
-        self.jumps = False
-        self.value = None
+        self.jumps = False # True for Knights
+        self.value = None # Material point value
         self.has_moved = False
+        # Handle init from Pawn promotion
+        if isinstance(locus, Pawn):
+            self.color = locus.color
+            self.square = locus.square
+            self.has_moved = True
+        # Handle init from Square
+        elif isinstance(locus, Square):
+            self.square = locus
+        # Handle init from coordinate string/tuple
+        else:
+            self.square = Square(locus)
         
     @property
     def row(self):
@@ -715,17 +742,21 @@ class Piece:
     def move_is_valid(self, d_row, d_col, capture=False):
         raise NotImplementedError()
     
-    def __repr__(self):
-        return "{}({}, {})".format( self.__class__.__name__, 
-                                    self.square, 
-                                    COLOR_NAME[self.color])
-    
     def __str__(self):
+        """
+        Single character representation of piece.
+        Uppercase for WHITE, lowercase for BLACK.
+        """
         if self.color == BLACK:
             letter = self.__class__.__name__[0].lower()
         else:
             letter = self.__class__.__name__[0]
         return "{}".format(letter)
+    
+    def __repr__(self):
+        return "{}({}, {})".format( self.__class__.__name__, 
+                                    self.square, 
+                                    COLOR_NAME[self.color])
 
 
 class Pawn(Piece):
@@ -822,7 +853,7 @@ class Queen(Piece):
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
         """
-        Can move like Rook or Bishop
+        Can make any move that is valid for Rook or Bishop
         """
         if Bishop.move_is_valid(d_col, d_row) or Rook.move_is_valid(d_col, d_row):
             return True
@@ -853,6 +884,9 @@ class King(Piece):
             else:
                 return False
 
+###############################################################################
+#  MAIN                                                                       #
+###############################################################################
 def main():
     board = Board.test_mate()
     board.play_game()
