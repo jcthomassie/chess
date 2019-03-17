@@ -7,10 +7,17 @@ Created on Fri Mar  8 09:57:04 2019
 import traceback
 import copy
 
-WHITE = "White"
-BLACK = "Black"
+WHITE = 0
+BLACK = 1
+
+DRAW = -1
+
+RANK_ZERO = "8"
+FILE_ZERO = "A"
+
 FLIP_COLOR = dict(( (WHITE, BLACK), (BLACK, WHITE) ))
 COLOR_ORIENTATION = dict(( (WHITE, -1), (BLACK, 1) ))
+COLOR_NAME = dict(((WHITE, "White"), (BLACK, "Black"), (DRAW, "Draw")))
 
 class Square:
     """
@@ -48,7 +55,7 @@ class Square:
         Convert file letter to a column integer 
         ( 'A'->0, 'B'->1, ... )
         """
-        return ord(file.upper()) - ord("A")
+        return ord(file.upper()) - ord(FILE_ZERO)
     
     @staticmethod
     def col_to_file(col):
@@ -56,7 +63,7 @@ class Square:
         Convert column integer to file letter 
         ( 0->'A', 1->'B', ... )
         """
-        return chr(ord("A") + col)
+        return chr(ord(FILE_ZERO) + col)
     
     @staticmethod
     def rank_to_row(rank):
@@ -64,7 +71,7 @@ class Square:
         Convert rank string to row integer 
         ( '8'->0, '1'->7, ... )
         """
-        return ord("8") - ord(rank)
+        return ord(RANK_ZERO) - ord(rank)
     
     @staticmethod
     def row_to_rank(row):
@@ -72,7 +79,7 @@ class Square:
         Convert row integer to rank string 
         ( 0->'8', 7->'1', ... )
         """
-        return chr(ord("8") - row)
+        return chr(ord(RANK_ZERO) - row)
         
     def __str__(self):
         """
@@ -82,7 +89,13 @@ class Square:
         return "{}{}".format(self.file, self.rank)
     
     def __repr__(self):
-        return "Square({:d}, {:d})".format(self.row, self.col)
+        return self.__str__()#"Square({})".format(str(self))
+    
+    def __eq__(self, other):
+        if isinstance(other, Square):
+            return self.row == other.row and self.col == other.col
+        elif isinstance(other, tuple):
+            return self.row == tuple[0] and self.row == tuple[1]
     
     def __add__(self, other):
         if isinstance(other, Square):
@@ -155,7 +168,19 @@ class Board:
         """
         for row in range(0, self.n_ranks):
             for col in range(0, self.n_files):
-                yield self[(row, col)]
+                yield Square((row, col))
+                
+    def piece_generator(self, color=None):
+        """
+        Yields all pieces on the current board. If color is specified, only
+        pieces of the specified color are yielded.
+        """
+        for square in self.flattened():
+            piece = self[square]
+            if piece is None:
+                continue
+            if color is None or piece.color == color:
+                yield piece
     
     def add_piece(self, piece, color, square):
         """
@@ -164,15 +189,16 @@ class Board:
         self[square] = piece(square, color=color)
         return
     
-    def get_slice(self, from_square, to_square):
+    def square_slice(self, from_square, to_square):
         """
-        Slices out a list representation of the board from_square to_square,
-        inclusive. Only works for square/diagonal displacements.
+        Slices out a list representation of the squares on the board
+        from_square to_square, inclusive. Only works for square/diagonal
+        displacements
         """
         from_square = Square(from_square)
         to_square = Square(to_square)
         d_row, d_col = to_square - from_square
-        pieces = [ ]
+        squares = [ ]
         # DIAGONAL MOVE
         if abs(d_row) == abs(d_col):
             r_unit = (1, -1)[d_row < 0] # get sign of row change
@@ -180,24 +206,346 @@ class Board:
             r_to_c = r_unit * c_unit # 1 if same, -1 if opposite
             for r in range(0, d_row + r_unit, r_unit):
                 pos_tup = (from_square.row + r, from_square.col + r * r_to_c)
-                pieces.append(self[pos_tup])
+                squares.append(Square(pos_tup))
         # VERTICAL MOVE
         elif d_col == 0:
             r_unit = (1, -1)[d_row < 0] # get sign of row change
             for r in range(0, d_row + r_unit, r_unit):
                 pos_tup = (from_square.row + r, from_square.col)
-                pieces.append(self[pos_tup])
+                squares.append(Square(pos_tup))
         # HORIZONTAL MOVE
         elif d_row == 0:
             c_unit = (1, -1)[d_col < 0] # get sign of col change
             for c in range(0, d_col + c_unit, c_unit):
                 pos_tup = (from_square.row, from_square.col + c)
-                pieces.append(self[pos_tup])
+                squares.append(Square(pos_tup))
         else:
-            raise ValueError("Slices must be square or diagonal!")
+            raise IndexError("Slices must be square or diagonal!")
         
-        return pieces
+        return squares
+    
+    def piece_slice(self, from_square, to_square):
+        """
+        Slices out a list representation of the board from_square to_square,
+        inclusive. Only works for square/diagonal displacements.
+        """
+        squares = self.square_slice(from_square, to_square)
+        return [ self[s] for s in squares ]
+    
+    def find_pieces(self, piece_type, color):
+        """
+        Yeilds pieces of the specified type and color.
+        """
+        for p in self.piece_generator(color=color):
+            if isinstance(p, piece_type):
+                yield p
+    
+    def enpassant(self, pawn, target):
+        pass
+    
+    def promote_pawn(self, pawn):
+        pass
+    
+    def obstruction(self, from_square, to_square):
+        """
+        Return True if there is a piece between the two squares.
+        Return False if the path is clear.
+        """
+        pieces = self.piece_slice(from_square, to_square)[1:-1]
+        if any(pieces):
+            return True
+        return False
 
+    def can_castle(self, king, rook):
+        """
+        Return True if the King and Rook can castle.
+        Return False otherwise.
+        """
+        if king.has_moved or rook.has_moved:
+            return False
+        if self.obstruction(king.square, rook.square):
+            return False
+        
+        # Make sure king doesn't cross through check (include current square)
+        path = self.square_slice(king.square, rook.square)[:3]
+        for square in path:
+            if len(self.get_attackers(square, FLIP_COLOR[king.color])) > 0:
+                return False
+        return True
+    
+    def castle(self, king, rook):
+        """
+        Process a castle move.
+        """
+        if self.can_castle(king, rook):
+            # Get King and Rook positions
+            path = self.square_slice(king.square, rook.square)
+            king_old = king.square
+            rook_old = rook.square
+            king_square = path[2]
+            rook_square = path[1]
+            # Move the pieces
+            king.move(king_square, castle=True)
+            rook.move(rook_square)
+            # Update the board
+            self[king_square] = king
+            self[rook_square] = rook
+            del self[king_old]
+            del self[rook_old]
+        else:
+            raise InvalidMoveError("{!r} cannot castle with {!r}!".format(king, rook))
+    
+    def get_attackers(self, square, color):
+        """
+        Check if any pieces of color are eyeing the square. 
+        Return list of pieces.
+        """
+        attackers = [ ]
+        for piece in self.piece_generator(color=color):
+            threats = self.valid_moves_piece(piece, recaptures=True)
+            
+            if square in threats:
+                attackers.append(piece)
+        
+        return attackers
+    
+    def valid_moves_king(self, king):
+        """
+        Return a list of all valid moves for a king.
+        """
+        moves = [ ]
+        # Normal moves
+        for square in self.valid_moves_piece(king):
+            threats = self.get_attackers(square, FLIP_COLOR[king.color])
+            if len(threats) == 0:
+                moves.append(square)
+        # Castling
+        for rook in self.find_pieces(Rook, king.color):
+            if self.can_castle(king, rook):
+                moves.append(self.square_slice(king.square, rook.square)[2])
+        return moves
+    
+    def valid_moves_piece(self, piece, recaptures=False):
+        """
+        Return a list of all valid moves for the specified piece.
+        """
+        moves = [ ]
+        for square in self.flattened():
+            target = self[square]
+            if target is None: 
+                # EMPTY case
+                capture = False
+                castle = False
+            elif target.color != piece.color: 
+                # CAPTURE case
+                capture = True
+                castle = False
+            elif recaptures:
+                # RECAP case
+                capture = True
+                castle = False
+            else:
+                continue
+            # Check if move is valid for piece
+            d_row, d_col = square - piece.square
+            if not piece.move_is_valid(d_row, d_col, capture=capture, castle=castle):
+                continue
+            # Check path
+            if not piece.jumps:
+                if self.obstruction(piece.square, square):
+                    continue
+            
+            moves.append(square)
+            
+        return moves
+    
+    def valid_moves_all(self):
+        """
+        Return a list of all valid moves in the current board configuration.
+        """
+        moves = [ ]
+        for piece in self.piece_generator(color=self.to_move):
+            if isinstance(piece, King):
+                moves.append( (piece.square, self.valid_moves_king(piece)) )
+            else:
+                moves.append( (piece.square, self.valid_moves_piece(piece)) )
+        return moves
+    
+    def move(self, from_square, to_square):
+        """
+        Attempts to move the piece on from_square to to_square.
+        """
+        # Check that move is valid
+        valid_moves = self.valid_moves_all()
+        valid_move_str = "|".join([ "{}{}".format(s0, s1) for s0, s1_list in valid_moves for s1 in s1_list ])
+        move_str = "{}{}".format(from_square, to_square)
+        if not move_str in valid_move_str:
+            raise InvalidMoveError("{} is not a valid move!".format(move_str))
+        
+        # Get move info
+        piece = self[from_square]
+        if self[to_square] is not None:
+            capture = True
+        else:
+            capture = False
+            
+        # Handle castling
+        #self.castle(piece, target)
+        
+        # Move the piece and update the board
+        piece.move(to_square, capture=capture)
+        self[to_square] = piece
+        del self[from_square]
+        return
+    
+    def undo_move(self):
+        """
+        Restore game state from one turn prior. Deletes the most recent move
+        from game_history.
+        """
+        if len(self.game_history) == 1:
+            raise InvalidMoveError("There are no moves to undo!")
+        self.board = copy.deepcopy(self.game_history[-2])
+        del self.game_history[-2:]
+        self.to_move = FLIP_COLOR[self.to_move]
+        self.winner = None
+        return
+    
+    def check(self):
+        """
+        Return True if current player is in check.
+        Return False otherwise.
+        """
+        king = next(self.find_pieces(King, self.to_move))
+        if len(self.get_attackers(king.square, FLIP_COLOR[king.color])) > 0:
+            return True
+        return False
+    
+    def checkmate(self):
+        """
+        Return True if current player is in checkmate.
+        Return False otherwise.
+        """
+        king = next(self.find_pieces(King, self.to_move))
+        if len(self.get_attackers(king.square, FLIP_COLOR[king.color])) > 0:
+            if len(self.valid_moves_king(king)) == 0:
+                return True
+        return False
+    
+    def stalemate(self):
+        """
+        Return True if current player has no valid moves.
+        Return False otherwise.
+        """
+        if not any(self.valid_moves_all()):
+            return True
+        return False
+    
+    def evaluate(self):
+        """
+        Returns the current material point spread.
+        """
+        score = 0
+        for piece in self.piece_generator():
+            # Add material for WHITE
+            if piece.color == WHITE:
+                score += piece.value
+            # Subtract material for BLACK
+            else:
+                score -= piece.value
+        return score
+
+    def play_turn(self):
+        """
+        Process the events of a turn.
+        """
+        move_input = input(">>> ").strip().upper()
+        if move_input == "R":
+            # Set winner to opponent
+            self.winner = FLIP_COLOR[self.to_move]
+        elif move_input == "U":
+            self.undo_move()
+        elif move_input == "D":
+            print("\n* * * Draw offered ( A - Accept ) * * * ")
+            draw = input(">>> ").strip()
+            if draw.strip().upper() == "A":
+                self.winner = DRAW
+        else:
+            try:
+                from_pos = move_input[:2]
+                to_pos = move_input[2:].strip()
+                from_square = Square(from_pos)
+                to_square = Square(to_pos)
+            except:
+                raise InvalidMoveError("Could not parse move!")
+            # Attempt move
+            self.move(from_square, to_square)
+            # Switch player
+            self.to_move = FLIP_COLOR[self.to_move]
+        return True
+    
+    def play_game(self):
+        """
+        Facilitate a game via commandline.
+        """
+        while self.winner is None:
+            # Print board, save copy
+            self.print_board()
+            self.game_history.append(copy.deepcopy(self.board))
+            
+            # Game end conditions
+            if self.checkmate():
+                self.winner = FLIP_COLOR[self.to_move]
+                break
+            if self.stalemate():
+                self.winner = DRAW
+                break
+            
+            # Keep trying to move until a move succeeds
+            while True:
+                try:
+                    self.play_turn()
+                    break
+                except (InvalidMoveError, IndexError) as e:
+                    print(e)
+        
+        print("\n\n    * * * * * * * * * *")
+        if self.winner == DRAW:
+            print("    *    GAME DRAWN   *")
+        else:
+            print("    *   {} WINS!   *".format(COLOR_NAME[self.winner]).upper())
+        print("    * * * * * * * * * *\n")
+        return
+    
+    def print_board(self):
+        """
+        Print a text representation of the current board position.
+        """
+        letters = "       A   B   C   D   E   F   G   H       "
+        if self.to_move == WHITE:
+            display = [ ( r, row[:] ) for r, row in enumerate(self.board[:]) ]
+        else: # flip for black
+            display = [ ( self.n_ranks - r - 1, row[::-1] ) for r, row in enumerate(self.board[::-1]) ]
+            letters = letters[::-1]
+        edge = "     +" + "---+" * self.n_files
+        mid = "   {} | " + "{} | " * self.n_files
+        print("_________________________________________________________")
+        print("\n")
+        print(edge)
+        for r, row in display:
+            row = [ " " if p is None else p for p in row ]
+            print(mid.format(Square.row_to_rank(r), *row))
+            print(edge)
+        print(letters)
+        print()
+        print("       {} to play!  (Material: {})".format(COLOR_NAME[self.to_move], self.evaluate()))
+        # Announce check
+        if self.check():
+            print("\n       * * * King is in check! * * *")
+        print("_________________________________________________________")
+        print("Enter move: c2c4 ( R - Resign | D - Draw | U - Undo )")
+        return
+    
     @classmethod
     def standard(cls):
         """
@@ -256,226 +604,55 @@ class Board:
                 h_board.add_piece(Pawn, WHITE, (j, i))
         
         return h_board
-
-    def castle(self, king, rook):
-        """
-        Attempt to castle.
-        """
-        if king.has_moved or rook.has_moved:
-            return False
-        # IF KING IN CHECK, RETURN FALSE
-        # IF PIECES BETWEEN, RETURN FALSE
-        return True
     
-    def promote_pawn():
-        pass
-    
-    def get_attackers(self, target_square, color):
+    @classmethod
+    def test_check(cls):
         """
-        Check if any pieces of color are eyeing the square. 
-        Return list of pieces.
+        Constructs a board with check.
         """
-        target = Square(target_square)
-        attackers = [ ]
-        for piece in self.flattened():
-            # Skip empty squares
-            if piece is None:
-                continue
-            # Skip pieces of other color
-            if piece.color != color:
-                continue
-            # Skip pieces that cannot capture the square
-            d_row, d_col = target - piece.square
-            if not piece.move_is_valid( d_row, d_col, capture=True ):
-                continue
-            # Skip obstructed pieces
-            if not piece.jumps:
-                if self.obstruction(piece.square, target):
-                    continue
-            
-            attackers.append(piece)
+        t_board = cls(n_ranks=8, n_files=8)
         
-        return attackers
-    
-    def check(self):
-        """
-        Return True if current player is in check.
-        Return False otherwise.
-        """
-        # Find king for player to move
-        king = None
-        for piece in self.flattened():
-            if isinstance(piece, King):
-                if piece.color == self.to_move:
-                    king = piece
-        if king is None:
-            raise Exception("Could not locate {} king!".format(self.to_move))
-        # See if king is attacked
-        if len(self.get_attackers(king.square, FLIP_COLOR[king.color])) > 0:
-            return True
-        return False
-    
-    def checkmate(self):
-        """
-        Return True if current player is in checkmate.
-        Return False otherwise.
-        """
-        return False
-
-    def stalemate(self):
-        """
-        Return True if current player cannot move.
-        Return False otherwise.
-        """
-        return False
-    
-    def obstruction(self, from_square, to_square):
-        """
-        Return True if there is a piece between the two squares.
-        Return False if the path is clear.
-        """
-        pieces = self.get_slice(from_square, to_square)[1:-1]
-        if any(pieces):
-            return True
-        return False
-    
-    def evaluate(self):
-        """
-        Returns the current material point spread.
-        """
-        score = 0
-        for piece in self.flattened():
-            # Skip empty squares
-            if piece is None:
-                continue
-            # Add material for WHITE
-            if piece.color == WHITE:
-                score += piece.value
-            # Subtract material for BLACK
-            else:
-                score -= piece.value
-        return score
-    
-    def move(self, from_square, to_square):
-        """
-        Attempts to move the piece on from_square to to_square.
-        """
-        # Get piece
-        piece = self[from_square]
-        if piece is None:
-            raise InvalidMoveError("From square is empty!")
-        elif piece.color != self.to_move:
-            raise InvalidMoveError("Wrong color piece!")
-        # Check path
-        if not piece.jumps:
-            if self.obstruction(from_square, to_square):
-                raise InvalidMoveError("Path is blocked!")
-        # Check target
-        target = self[to_square]
-        if target is None:
-            capture = False
-        else:
-            capture = True
-            if target.color == piece.color:
-                raise InvalidMoveError("You cannot capture your own piece!")
-        # Try to move the piece to the square
-        piece.move(to_square, capture=capture)
-        # Update the board
-        self[to_square] = piece
-        del self[from_square]
-        return
-    
-    def undo_move(self):
-        """
-        Restore game state from one turn prior. Deletes the most recent move
-        from m
-        """
-        if len(self.game_history) == 1:
-            raise Exception("There are no moves to undo!")
-        del self.game_history[-1]
-        self.board = copy.deepcopy(self.game_history[-1])
-        self.to_move = FLIP_COLOR[self.to_move]
-        return
-    
-    def print_board(self):
-        """
-        Print a text representation of the current board position.
-        """
-        letters = "     A    B    C    D    E    F    G    H     "
-        if self.to_move == WHITE:
-            display = [ ( r, row[:] ) for r, row in enumerate(self.board[:]) ]
-        else: # flip for black
-            display = [ ( self.n_ranks - r - 1, row[::-1] ) for r, row in enumerate(self.board[::-1]) ]
-            letters = letters[::-1]
-        edge = "   +" + "----+" * self.n_files
-        mid = " {} | " + "{} | " * self.n_files
-        print("_________________________________________________________")
-        print("\n")
-        print(edge)
-        for r, row in display:
-            row = [ "  " if p is None else p for p in row ]
-            print(mid.format(Square.row_to_rank(r), *row))
-            print(edge)
-        print(letters)
-        print()
-        print("\t{} to play!  (Spread: {})".format(self.to_move, self.evaluate()))
-        # Announce check
-        if self.check():
-            print("\n\t* * * King is in check! * * *")
-        print("_________________________________________________________")
-        return
-
-    def play_turn(self):
-        """
-        Process the events of a turn
-        """
-        print("Enter piece move coordinates")
-        print("R - Resign")
-        print("U - Undo last move")
-        move_input = input(">>> ").strip().upper()
-        if move_input == "R":
-            # Set winner to opponent
-            self.winner = FLIP_COLOR[self.to_move]
-        elif move_input == "U":
-            self.undo_move()
-        else:
-            from_pos, to_pos = move_input.split()
-            from_square = Square(from_pos)
-            to_square = Square(to_pos)
-            # Attempt move
-            self.move(from_square, to_square)
-            # Switch player
-            self.to_move = FLIP_COLOR[self.to_move]
-        return True
-    
-    def play_game(self):
-        """
-        Facilitate a game via commandline.
-        """
-        while self.winner is None:
-            # Print board, save copy
-            self.print_board()
-            self.game_history.append(copy.deepcopy(self.board))
-            
-            # See if checkmate
-            if self.checkmate():
-                self.winner = FLIP_COLOR[self.to_move]
-            # See if stalemate
-            if self.stalemate():
-                self.winner = "DRAW"
-                
-            # Keep trying to move until a move succeeds
-            while True:
-                try:
-                    self.play_turn()
-                    break
-                except (InvalidMoveError, IndexError) as e:
-                    print(e)
+        # Populate board
+        t_board.add_piece(King,  BLACK, "A8")
+        t_board.add_piece(Queen, BLACK, "G8")
+        t_board.add_piece(King,  WHITE, "B3")
         
-        print("\n    * * * * * * * * *")
-        print("    * {} WINS!!! *".format(self.winner).upper())
-        print("    * * * * * * * * *\n")
-        return
+        return t_board
+    
+    @classmethod
+    def test_mate(cls):
+        """
+        Constructs a board with checkmate.
+        """
+        t_board = cls(n_ranks=8, n_files=8)
+        t_board.to_move = BLACK
+        
+        # Populate board
+        t_board.add_piece(King,   BLACK, "D4")
+        t_board.add_piece(Knight, BLACK, "C3")
+        t_board.add_piece(King,   WHITE, "B3")
+        t_board.add_piece(Queen,  WHITE, "E5")
+        t_board.add_piece(Knight, WHITE, "G6")
+        
+        return t_board
+    
+    @classmethod
+    def test_castle(cls):
+        """
+        Constructs a board with immediate castle.
+        """
+        t_board = cls(n_ranks=8, n_files=8)
+        
+        # Populate board
+        t_board.add_piece(King, WHITE, "E1")
+        t_board.add_piece(Rook, WHITE, "A1")
+        t_board.add_piece(Rook, WHITE, "H1")
+        t_board.add_piece(King, BLACK, "E8")
+        t_board.add_piece(Rook, BLACK, "A8")
+        t_board.add_piece(Rook, BLACK, "H8")
+        
+        return t_board
+
 
 class InvalidMoveError(Exception):
     pass
@@ -517,23 +694,29 @@ class Piece:
         """
         # Parse coordinate into tuple
         if new_square == self.square:
-            raise InvalidMoveError("{} is already on {}!".format(repr(self), str(new_square)))
+            raise InvalidMoveError("{!r} is already on {}!".format(self, new_square))
         # Check move
         d_row, d_col = new_square - self.square
         if self.move_is_valid(d_row, d_col, **kwargs):
             self.square = new_square
             self.has_moved = True
         else:
-            raise InvalidMoveError("{} cannot move to {}!".format(repr(self), str(new_square)))
+            raise InvalidMoveError("{!r} cannot move to {}!".format(self, new_square))
         
     def move_is_valid(self, d_row, d_col, capture=False):
         raise NotImplementedError()
     
     def __repr__(self):
-        return "{}({}, {})".format(self.__class__.__name__, str(self.square), self.color)
+        return "{}({}, {})".format( self.__class__.__name__, 
+                                    self.square, 
+                                    COLOR_NAME[self.color])
     
     def __str__(self):
-        return "{}{}".format(self.color[0], self.__class__.__name__[0])
+        if self.color == BLACK:
+            letter = self.__class__.__name__[0].lower()
+        else:
+            letter = self.__class__.__name__[0]
+        return "{}".format(letter)
 
 
 class Pawn(Piece):
@@ -597,7 +780,11 @@ class Knight(Piece):
             return False
         
     def __str__(self):
-        return "{}N".format(self.color[0])
+        if self.color == BLACK:
+            letter = "n"
+        else:
+            letter = "N"
+        return "{}".format(letter)
 
 
 class Rook(Piece):
@@ -641,17 +828,24 @@ class King(Piece):
         self.value = 5
 
     @staticmethod
-    def move_is_valid(d_row, d_col, **kwargs):
+    def move_is_valid(d_row, d_col, castle=False, **kwargs):
         """
         Can move 1 square any direction, or diagonally
         """
-        if sorted([abs(d_col), abs(d_row)]) in ([1, 1], [0, 1]):
-            return True
+        if castle:
+            if abs(d_row) == 0 and abs(d_col) == 2:
+                return True
+            else:
+                return False
+            
         else:
-            return False
+            if sorted([abs(d_col), abs(d_row)]) in ([1, 1], [0, 1]):
+                return True
+            else:
+                return False
 
 def main():
-    board = Board.standard()
+    board = Board.test_mate()
     board.play_game()
 
 if __name__ == "__main__":
@@ -659,4 +853,3 @@ if __name__ == "__main__":
         main()
     except:
         traceback.print_exc()
-        input("Press <ENTER> to exit...")
