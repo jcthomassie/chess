@@ -12,6 +12,8 @@ BLACK = 1
 
 DRAW = -1
 
+N_RANKS = 8
+N_FILES = 8
 RANK_ZERO = "8"
 FILE_ZERO = "A"
 
@@ -108,12 +110,10 @@ class Square:
 
 class Board:
     
-    def __init__(self, n_ranks=8, n_files=8):
+    def __init__(self):
         # Construct board
-        self.n_ranks = n_ranks
-        self.n_files = n_files
-        self.board = [ [ None for _ in range(self.n_files) ] 
-                              for _ in range(self.n_ranks) 
+        self.board = [ [ None for _ in range(N_FILES) ] 
+                              for _ in range(N_RANKS) 
                       ]
         # Game trackers
         self.to_move = WHITE
@@ -129,9 +129,9 @@ class Board:
         if not isinstance(piece, Piece):
             raise TypeError("Board can only contain Piece objects!")
         sq = Square(position)
-        if not sq.row in range(0, self.n_ranks):
+        if not sq.row in range(0, N_RANKS):
             raise IndexError("Rank out of bounds!")
-        if not sq.col in range(0, self.n_files):
+        if not sq.col in range(0, N_FILES):
             raise IndexError("File out of bounds!")
         self.board[sq.row][sq.col] = piece
         return
@@ -142,9 +142,9 @@ class Board:
         board['A1'] -> Rook(White, A1)
         """
         sq = Square(position)
-        if not sq.row in range(0, self.n_ranks):
+        if not sq.row in range(0, N_RANKS):
             raise IndexError("Rank out of bounds!")
-        if not sq.col in range(0, self.n_files):
+        if not sq.col in range(0, N_FILES):
             raise IndexError("File out of bounds!")
         piece = self.board[sq.row][sq.col]
         return piece
@@ -155,9 +155,9 @@ class Board:
         slot with None.
         """
         sq = Square(position)
-        if not sq.row in range(0, self.n_ranks):
+        if not sq.row in range(0, N_RANKS):
             raise IndexError("Rank out of bounds!")
-        if not sq.col in range(0, self.n_files):
+        if not sq.col in range(0, N_FILES):
             raise IndexError("File out of bounds!")
         self.board[sq.row][sq.col] = None
         return
@@ -166,8 +166,8 @@ class Board:
         """
         Generator to iterate over all squares of the board
         """
-        for row in range(0, self.n_ranks):
-            for col in range(0, self.n_files):
+        for row in range(0, N_RANKS):
+            for col in range(0, N_FILES):
                 yield Square((row, col))
                 
     def piece_generator(self, color=None):
@@ -534,10 +534,10 @@ class Board:
         if self.to_move == WHITE:
             display = [ ( r, row[:] ) for r, row in enumerate(self.board[:]) ]
         else: # flip for black
-            display = [ ( self.n_ranks - r - 1, row[::-1] ) for r, row in enumerate(self.board[::-1]) ]
+            display = [ ( N_RANKS - r - 1, row[::-1] ) for r, row in enumerate(self.board[::-1]) ]
             letters = letters[::-1]
-        edge = "     +" + "---+" * self.n_files
-        mid = "   {} | " + "{} | " * self.n_files
+        edge = "     +" + "---+" * N_FILES
+        mid = "   {} | " + "{} | " * N_FILES
         print("_________________________________________________________")
         print("\n")
         print(edge)
@@ -560,7 +560,7 @@ class Board:
         """
         Construct a standard chess board.
         """
-        s_board = cls(n_ranks=8, n_files=8)
+        s_board = cls()
         
         # Populate board
         s_board.add_piece(Rook,   BLACK, "A8")
@@ -571,7 +571,7 @@ class Board:
         s_board.add_piece(Bishop, BLACK, "F8")
         s_board.add_piece(Knight, BLACK, "G8")
         s_board.add_piece(Rook,   BLACK, "H8")
-        for i in range(s_board.n_files):
+        for i in range(N_FILES):
             s_board.add_piece(Pawn, BLACK, (1, i))
         s_board.add_piece(Rook,   WHITE, "A1")
         s_board.add_piece(Knight, WHITE, "B1")
@@ -581,7 +581,7 @@ class Board:
         s_board.add_piece(Bishop, WHITE, "F1")
         s_board.add_piece(Knight, WHITE, "G1")
         s_board.add_piece(Rook,   WHITE, "H1")
-        for i in range(s_board.n_files):
+        for i in range(N_FILES):
             s_board.add_piece(Pawn, WHITE, (6, i))
         
         return s_board
@@ -591,7 +591,7 @@ class Board:
         """
         Construct a Horde configured chess board.
         """
-        h_board = cls(n_ranks=8, n_files=8)
+        h_board = cls()
         
         # Populate board
         h_board.add_piece(Rook,   BLACK, "A8")
@@ -602,13 +602,13 @@ class Board:
         h_board.add_piece(Bishop, BLACK, "F8")
         h_board.add_piece(Knight, BLACK, "G8")
         h_board.add_piece(Rook,   BLACK, "H8")
-        for i in range(h_board.n_files):
+        for i in range(N_FILES):
             h_board.add_piece(Pawn, BLACK, (1, i))
         h_board.add_piece(Pawn, WHITE, "B5")
         h_board.add_piece(Pawn, WHITE, "C5")
         h_board.add_piece(Pawn, WHITE, "F5")
         h_board.add_piece(Pawn, WHITE, "G5")
-        for i in range(h_board.n_files):
+        for i in range(N_FILES):
             for j in range(4, 8):
                 h_board.add_piece(Pawn, WHITE, (j, i))
         
@@ -619,7 +619,7 @@ class Board:
         """
         Constructs a board with check.
         """
-        t_board = cls(n_ranks=8, n_files=8)
+        t_board = cls()
         
         # Populate board
         t_board.add_piece(King,  BLACK, "A8")
@@ -633,7 +633,7 @@ class Board:
         """
         Constructs a board with checkmate.
         """
-        t_board = cls(n_ranks=8, n_files=8)
+        t_board = cls()
         t_board.to_move = BLACK
         
         # Populate board
@@ -650,7 +650,7 @@ class Board:
         """
         Constructs a board with immediate castle.
         """
-        t_board = cls(n_ranks=8, n_files=8)
+        t_board = cls()
         
         # Populate board
         t_board.add_piece(King, WHITE, "E1")
