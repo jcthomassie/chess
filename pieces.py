@@ -4,9 +4,12 @@ Created on Fri Mar  8 09:57:04 2019
 
 @author: jthom
 """
+import traceback
+import copy
+
 WHITE = "White"
 BLACK = "Black"
-MOVE_SWITCH = dict(( (WHITE, BLACK), (BLACK, WHITE) ))
+FLIP_COLOR = dict(( (WHITE, BLACK), (BLACK, WHITE) ))
 COLOR_ORIENTATION = dict(( (WHITE, -1), (BLACK, 1) ))
 
 class Square:
@@ -19,8 +22,8 @@ class Square:
         Takes a tuple or string of length 2 as input.
         """
         if isinstance(position, Square):
-            return position
-        elif isinstance(position, str):
+            position = ( position.row, position.col )
+        if isinstance(position, str):
             if len(position) != 2:
                 raise ValueError("Square position string must be 2 characters!")
             pos_str = position
@@ -32,7 +35,7 @@ class Square:
             pos_tup = position
             pos_str = self.col_to_file(pos_tup[1]) + self.row_to_rank(pos_tup[0])
         else:
-            raise ValueError("Square position must be a string or tuple!")
+            raise TypeError("Square position must be a string or tuple!")
         self.row = pos_tup[0]
         self.col = pos_tup[1]
         self.file = pos_str[0]
@@ -97,10 +100,11 @@ class Board:
         self.n_ranks = n_ranks
         self.n_files = n_files
         self.board = [ [ None for _ in range(self.n_files) ] 
-                              for _ in range(self.n_ranks) ]
+                              for _ in range(self.n_ranks) 
+                      ]
         # Game trackers
         self.to_move = WHITE
-        self.move_history = [ ]
+        self.game_history = [ ]
         self.winner = None
         return
     
@@ -112,6 +116,10 @@ class Board:
         if not isinstance(piece, Piece):
             raise TypeError("Board can only contain Piece objects!")
         sq = Square(position)
+        if not sq.row in range(0, self.n_ranks):
+            raise IndexError("Rank out of bounds!")
+        if not sq.col in range(0, self.n_files):
+            raise IndexError("File out of bounds!")
         self.board[sq.row][sq.col] = piece
         return
     
@@ -121,7 +129,12 @@ class Board:
         board['A1'] -> Rook(White, A1)
         """
         sq = Square(position)
-        return self.board[sq.row][sq.col]
+        if not sq.row in range(0, self.n_ranks):
+            raise IndexError("Rank out of bounds!")
+        if not sq.col in range(0, self.n_files):
+            raise IndexError("File out of bounds!")
+        piece = self.board[sq.row][sq.col]
+        return piece
         
     def __delitem__(self, position):
         """
@@ -129,8 +142,20 @@ class Board:
         slot with None.
         """
         sq = Square(position)
+        if not sq.row in range(0, self.n_ranks):
+            raise IndexError("Rank out of bounds!")
+        if not sq.col in range(0, self.n_files):
+            raise IndexError("File out of bounds!")
         self.board[sq.row][sq.col] = None
         return
+    
+    def flattened(self):
+        """
+        Generator to iterate over all squares of the board
+        """
+        for row in range(0, self.n_ranks):
+            for col in range(0, self.n_files):
+                yield self[(row, col)]
     
     def add_piece(self, piece, color, square):
         """
@@ -145,27 +170,28 @@ class Board:
         inclusive. Only works for square/diagonal displacements.
         """
         from_square = Square(from_square)
-        to_square =   Square(to_square)
+        to_square = Square(to_square)
         d_row, d_col = to_square - from_square
-        
         pieces = [ ]
         # DIAGONAL MOVE
         if abs(d_row) == abs(d_col):
-            d_unit = (1, -1)[d_row < 0]
-            for d in range(0, d_row + d_unit, d_unit):
-                pos_tup = (from_square.row + d, from_square.col + d)
+            r_unit = (1, -1)[d_row < 0] # get sign of row change
+            c_unit = (1, -1)[d_col < 0] # get sign of col change
+            r_to_c = r_unit * c_unit # 1 if same, -1 if opposite
+            for r in range(0, d_row + r_unit, r_unit):
+                pos_tup = (from_square.row + r, from_square.col + r * r_to_c)
                 pieces.append(self[pos_tup])
         # VERTICAL MOVE
         elif d_col == 0:
-            d_unit = (1, -1)[d_row < 0]
-            for d in range(0, d_row + d_unit, d_unit):
-                pos_tup = (from_square.row + d, from_square.col)
+            r_unit = (1, -1)[d_row < 0] # get sign of row change
+            for r in range(0, d_row + r_unit, r_unit):
+                pos_tup = (from_square.row + r, from_square.col)
                 pieces.append(self[pos_tup])
         # HORIZONTAL MOVE
         elif d_row == 0:
-            d_unit = (1, -1)[d_col < 0]
-            for d in range(0, d_col + d_unit, d_unit):
-                pos_tup = (from_square.row + d, from_square.col)
+            c_unit = (1, -1)[d_col < 0] # get sign of col change
+            for c in range(0, d_col + c_unit, c_unit):
+                pos_tup = (from_square.row, from_square.col + c)
                 pieces.append(self[pos_tup])
         else:
             raise ValueError("Slices must be square or diagonal!")
@@ -244,9 +270,61 @@ class Board:
     def promote_pawn():
         pass
     
+    def get_attackers(self, target_square, color):
+        """
+        Check if any pieces of color are eyeing the square. 
+        Return list of pieces.
+        """
+        target = Square(target_square)
+        attackers = [ ]
+        for piece in self.flattened():
+            # Skip empty squares
+            if piece is None:
+                continue
+            # Skip pieces of other color
+            if piece.color != color:
+                continue
+            # Skip pieces that cannot capture the square
+            d_row, d_col = target - piece.square
+            if not piece.move_is_valid( d_row, d_col, capture=True ):
+                continue
+            # Skip obstructed pieces
+            if not piece.jumps:
+                if self.obstruction(piece.square, target):
+                    continue
+            
+            attackers.append(piece)
+        
+        return attackers
+    
+    def check(self):
+        """
+        Return True if current player is in check.
+        Return False otherwise.
+        """
+        # Find king for player to move
+        king = None
+        for piece in self.flattened():
+            if isinstance(piece, King):
+                if piece.color == self.to_move:
+                    king = piece
+        if king is None:
+            raise Exception("Could not locate {} king!".format(self.to_move))
+        # See if king is attacked
+        if len(self.get_attackers(king.square, FLIP_COLOR[king.color])) > 0:
+            return True
+        return False
+    
     def checkmate(self):
         """
         Return True if current player is in checkmate.
+        Return False otherwise.
+        """
+        return False
+
+    def stalemate(self):
+        """
+        Return True if current player cannot move.
         Return False otherwise.
         """
         return False
@@ -266,14 +344,16 @@ class Board:
         Returns the current material point spread.
         """
         score = 0
-        for row in range(self.n_ranks):
-            for col in range(self.n_files):
-                piece = self[(row, col)]
-                if piece is not None:
-                    if piece.color == WHITE:
-                        score += piece.value
-                    else:
-                        score -= piece.value
+        for piece in self.flattened():
+            # Skip empty squares
+            if piece is None:
+                continue
+            # Add material for WHITE
+            if piece.color == WHITE:
+                score += piece.value
+            # Subtract material for BLACK
+            else:
+                score -= piece.value
         return score
     
     def move(self, from_square, to_square):
@@ -287,7 +367,7 @@ class Board:
         elif piece.color != self.to_move:
             raise InvalidMoveError("Wrong color piece!")
         # Check path
-        if not isinstance(piece, Knight):
+        if not piece.jumps:
             if self.obstruction(from_square, to_square):
                 raise InvalidMoveError("Path is blocked!")
         # Check target
@@ -305,62 +385,91 @@ class Board:
         del self[from_square]
         return
     
-    def undo_move():
-        pass
+    def undo_move(self):
+        """
+        Restore game state from one turn prior. Deletes the most recent move
+        from m
+        """
+        if len(self.game_history) == 1:
+            raise Exception("There are no moves to undo!")
+        del self.game_history[-1]
+        self.board = copy.deepcopy(self.game_history[-1])
+        self.to_move = FLIP_COLOR[self.to_move]
+        return
     
     def print_board(self):
         """
         Print a text representation of the current board position.
         """
-        #if self.to_move == WHITE:
-        display = [ row[:] for row in self.board[:] ]
-        #else: # flip for black
-        #    display = [ row[::-1] for row in self.board[::-1] ]
-            
+        letters = "     A    B    C    D    E    F    G    H     "
+        if self.to_move == WHITE:
+            display = [ ( r, row[:] ) for r, row in enumerate(self.board[:]) ]
+        else: # flip for black
+            display = [ ( self.n_ranks - r - 1, row[::-1] ) for r, row in enumerate(self.board[::-1]) ]
+            letters = letters[::-1]
         edge = "   +" + "----+" * self.n_files
         mid = " {} | " + "{} | " * self.n_files
+        print("_________________________________________________________")
+        print("\n")
         print(edge)
-        for r, row in enumerate(display):
+        for r, row in display:
             row = [ "  " if p is None else p for p in row ]
             print(mid.format(Square.row_to_rank(r), *row))
             print(edge)
-        print("     A    B    C    D    E    F    G    H\n")
+        print(letters)
+        print()
         print("\t{} to play!  (Spread: {})".format(self.to_move, self.evaluate()))
+        # Announce check
+        if self.check():
+            print("\n\t* * * King is in check! * * *")
         print("_________________________________________________________")
         return
-    
+
     def play_turn(self):
         """
         Process the events of a turn
         """
-        move_input = input("MOVE (R to resign): ")
+        print("Enter piece move coordinates")
+        print("R - Resign")
+        print("U - Undo last move")
+        move_input = input(">>> ").strip().upper()
         if move_input == "R":
             # Set winner to opponent
-            self.winner = MOVE_SWITCH[self.to_move]
+            self.winner = FLIP_COLOR[self.to_move]
+        elif move_input == "U":
+            self.undo_move()
         else:
+            from_pos, to_pos = move_input.split()
+            from_square = Square(from_pos)
+            to_square = Square(to_pos)
             # Attempt move
-            self.move(*move_input.split())
+            self.move(from_square, to_square)
             # Switch player
-            self.to_move = MOVE_SWITCH[self.to_move]
-            # See if in checkmate
-            if self.checkmate():
-                self.winner = MOVE_SWITCH[self.to_move]
-        return
+            self.to_move = FLIP_COLOR[self.to_move]
+        return True
     
     def play_game(self):
         """
         Facilitate a game via commandline.
         """
-        while self.winner is None:   
+        while self.winner is None:
+            # Print board, save copy
             self.print_board()
+            self.game_history.append(copy.deepcopy(self.board))
             
-            moved = False
-            while not moved:
-                # Keep asking for turn until move succeeds
+            # See if checkmate
+            if self.checkmate():
+                self.winner = FLIP_COLOR[self.to_move]
+            # See if stalemate
+            if self.stalemate():
+                self.winner = "DRAW"
+                
+            # Keep trying to move until a move succeeds
+            while True:
                 try:
                     self.play_turn()
-                    moved = True
-                except InvalidMoveError as e:
+                    break
+                except (InvalidMoveError, IndexError) as e:
                     print(e)
         
         print("\n    * * * * * * * * *")
@@ -374,10 +483,13 @@ class InvalidMoveError(Exception):
 
 class Piece:
     
-    def __init__(self, square, color=WHITE):
-        # Parse coordinate into tuple
-        self.square = Square(square)
+    def __init__(self, position, color=WHITE):
+        if isinstance(position, Square):
+            self.square = position
+        else:
+            self.square = Square(position)
         self.color = color
+        self.jumps = False
         self.value = None
         self.has_moved = False
         
@@ -404,7 +516,6 @@ class Piece:
         then it updates it's position.
         """
         # Parse coordinate into tuple
-        new_square = Square(new_square)
         if new_square == self.square:
             raise InvalidMoveError("{} is already on {}!".format(repr(self), str(new_square)))
         # Check move
@@ -473,6 +584,7 @@ class Knight(Piece):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.value = 3
+        self.jumps = True
         
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
@@ -499,7 +611,7 @@ class Rook(Piece):
         """
         Rank or file can change any amount, but one must not change
         """
-        if ( d_col != 0 ) ^ ( d_row != 0 ): # exclusive or
+        if ( d_col == 0 and d_row != 0 ) or ( d_row == 0 and d_col != 0 ):
             return True
         else:
             return False
@@ -543,4 +655,8 @@ def main():
     board.play_game()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except:
+        traceback.print_exc()
+        input("Press <ENTER> to exit...")
