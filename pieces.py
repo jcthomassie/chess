@@ -240,12 +240,6 @@ class Board:
             if isinstance(p, piece_type):
                 yield p
     
-    def enpassant(self, pawn, target):
-        pass
-    
-    def promote_pawn(self, pawn):
-        pass
-    
     def obstruction(self, from_square, to_square):
         """
         Return True if there is a piece between the two squares.
@@ -255,6 +249,26 @@ class Board:
         if any(pieces):
             return True
         return False
+    
+    def enpassant(self, pawn, target):
+        pass
+    
+    def promote_pawn(self, pawn):
+        pass
+    
+    def get_attackers(self, square, color):
+        """
+        Check if any pieces of color are eyeing the square. 
+        Return list of pieces.
+        """
+        attackers = [ ]
+        for piece in self.piece_generator(color=color):
+            threats = self.valid_moves_piece(piece, recaptures=True)
+            
+            if square in threats:
+                attackers.append(piece)
+        
+        return attackers
 
     def can_castle(self, king, rook):
         """
@@ -294,20 +308,6 @@ class Board:
             del self[rook_old]
         else:
             raise InvalidMoveError("{!r} cannot castle with {!r}!".format(king, rook))
-    
-    def get_attackers(self, square, color):
-        """
-        Check if any pieces of color are eyeing the square. 
-        Return list of pieces.
-        """
-        attackers = [ ]
-        for piece in self.piece_generator(color=color):
-            threats = self.valid_moves_piece(piece, recaptures=True)
-            
-            if square in threats:
-                attackers.append(piece)
-        
-        return attackers
     
     def valid_moves_king(self, king):
         """
@@ -369,12 +369,14 @@ class Board:
                 moves.append( (piece.square, self.valid_moves_king(piece)) )
             else:
                 moves.append( (piece.square, self.valid_moves_piece(piece)) )
+        # TODO: Remove moves that leave king in check
         return moves
     
     def move(self, from_square, to_square):
         """
         Attempts to move the piece on from_square to to_square.
         """
+        # TODO: make valid_moves_all only call once per turn
         # Check that move is valid
         valid_moves = self.valid_moves_all()
         valid_move_str = "|".join([ "{}{}".format(s0, s1) for s0, s1_list in valid_moves for s1 in s1_list ])
@@ -389,8 +391,12 @@ class Board:
         else:
             capture = False
             
-        # Handle castling
+        # TODO: Handle castling
         #self.castle(piece, target)
+        
+        # TODO: Handle enpassant
+        
+        # TODO: Handle pawn promotions
         
         # Move the piece and update the board
         piece.move(to_square, capture=capture)
@@ -426,6 +432,7 @@ class Board:
         Return True if current player is in checkmate.
         Return False otherwise.
         """
+        # TODO: fix false positives
         king = next(self.find_pieces(King, self.to_move))
         if len(self.get_attackers(king.square, FLIP_COLOR[king.color])) > 0:
             if len(self.valid_moves_king(king)) == 0:
@@ -478,10 +485,10 @@ class Board:
                 to_square = Square(to_pos)
             except:
                 raise InvalidMoveError("Could not parse move!")
-            # Attempt move
+            # Make move
             self.move(from_square, to_square)
-            # Switch player
             self.to_move = FLIP_COLOR[self.to_move]
+            
         return True
     
     def play_game(self):
