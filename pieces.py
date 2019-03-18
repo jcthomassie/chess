@@ -128,7 +128,10 @@ class Square:
         return "{}{}".format(self.file, self.rank)
 
     def __repr__(self):
-        return self.__str__()#"Square({})".format(str(self))
+        return self.__str__()
+
+    def __hash__(self):
+        return int(str(self.row) + str(self.col))
 
     def __eq__(self, other):
         if isinstance(other, Square):
@@ -438,40 +441,44 @@ class Board:
 
     def valid_moves_all(self, remove_checks=True):
         """
-        Return a list of all valid moves in the current board configuration.
+        Return a dictionary of all valid moves in the current board
+        configuration. Keys are from square, values are lists of to squares.
         """
-        moves = [ ]
+        move_lookup = dict( )
         for piece in self.piece_generator(color=self.to_move):
             if isinstance(piece, King):
-                moves.append([ (piece.square, t) for t in self.valid_targets_king(piece) ])
+                piece_targets = self.valid_targets_king(piece)
             else:
-                moves.append([ (piece.square, t) for t in self.valid_targets_piece(piece) ])
-        moves.extend(self.valid_en_passants())
+                piece_targets = self.valid_targets_piece(piece)
+
+            if len(piece_targets) > 0:
+                move_lookup[piece.square] = piece_targets
         # Remove moves that leave king in check
         if remove_checks:
-            moves = self.remove_check_results(moves)
-        return moves
+            move_lookup = self.remove_check_results(move_lookup)
+        return move_lookup
 
-    def remove_check_results(self, move_list):
+    def remove_check_results(self, move_lookup):
         """
-        Takes a move_list. Returns a subset of moves that do not leave the king
-        in check.
+        Takes a move_lookup dict. Removes all moves that leave the king in
+        check.
         """
-        cleaned = [ ]
+        cleaned = dict( )
         color = self.to_move
         test_board = copy.deepcopy(self)
-        for move_group in move_list:
-            cleaned_group = [ ]
-            for from_square, to_square in move_group:
+        for from_square, targets in move_lookup.items():
+            cleaned_targets = [ ]
+            for to_square in targets:
+                # Try the move on the test_board
                 move = test_board.load_move(from_square, to_square, verify_move=False)
                 test_board.push_move(move)
-                if test_board.check(color=color):
-                    test_board.undo_move()
-                    continue
-                else:
-                    test_board.undo_move()
-                    cleaned_group.append((from_square, to_square))
-            cleaned.append(cleaned_group)
+                # Keep the move if it does not cause check
+                if not test_board.check(color=color):
+                    cleaned_targets.append(to_square)
+                # Reset for next test
+                test_board.undo_move()
+            if len(cleaned_targets) > 0:
+                cleaned[from_square] = cleaned_targets
         return cleaned
 
     def move_piece(self, from_square, to_square, capture=False, castle=False, en_passant=False):
@@ -531,7 +538,7 @@ class Board:
         # Check that move is valid
         if verify_move:
             valid_moves = self.valid_moves_all()
-            valid_move_str = "|".join([ "{}{}".format(m[0], m[1]) for m_set in valid_moves for m in m_set ])
+            valid_move_str = "|".join([ "{}{}".format(s0, s1) for s0, targs in valid_moves.items() for s1 in targs ])
             move_str = "{}{}".format(from_square, to_square)
             if not move_str in valid_move_str:
                 raise InvalidMoveError("{} is not a valid move!".format(move_str))
@@ -619,18 +626,12 @@ class Board:
         if the move fails.
         """
         try:
-            if len(move_str) == 2:
-                piece = self[move_str]
-                print("Valid targets for {!r}:".format(piece))
-                print(self.valid_targets_piece(piece))
-                raise InvalidMoveError()
             from_square = Square(move_str[:2])
             to_square = Square(move_str[2:].strip())
         except:
             raise InvalidMoveError("Could not parse move!")
         # Make move
-        move = self.load_move(from_square, to_square)
-        self.push_move(move)
+        self.push_move(self.load_move(from_square, to_square))
         return
 
     def find_king(self, color=None):
@@ -665,7 +666,7 @@ class Board:
         Return True if current player is in checkmate.
         Return False otherwise.
         """
-        if self.check() and not any(self.valid_moves_all()):
+        if self.check() and len(self.valid_moves_all()) == 0:
             return True
         return False
 
@@ -674,7 +675,7 @@ class Board:
         Return True if current player has no valid moves.
         Return False otherwise.
         """
-        if not any(self.valid_moves_all()):
+        if len(self.valid_moves_all()) == 0:
             return True
         return False
 
@@ -696,17 +697,30 @@ class Board:
         """
         Process the events of a turn.
         """
-        move_input = input(">>> ").strip().upper()
+        actionable = False
+        while not actionable:
+            move_input = input(">>> ").strip().upper()
+            if move_input == "D":
+                print("\n* * * Draw offered ( A - Accept ) * * * ")
+                draw = input(">>> ").strip()
+                if draw.strip().upper() == "A":
+                    self.winner = DRAW
+                    actionable = True
+            elif move_input == "L":
+                print("Valid moves:")
+                print(self.valid_moves_all())
+            elif len(move_input) == 2:
+                piece = self[move_input]
+                print("Valid moves for {!r}:".format(piece))
+                print(self.valid_moves_all()[piece.square])
+            else:
+                actionable = True
+
         if move_input == "R":
             # Set winner to opponent
             self.winner = FLIP_COLOR[self.to_move]
         elif move_input == "U":
             self.undo_move()
-        elif move_input == "D":
-            print("\n* * * Draw offered ( A - Accept ) * * * ")
-            draw = input(">>> ").strip()
-            if draw.strip().upper() == "A":
-                self.winner = DRAW
         else:
             self.parse_move(move_input)
         return True
@@ -891,7 +905,7 @@ class Board:
         if self.check():
             print("\n       * * * King is in check! * * *")
         print("_________________________________________________________")
-        print("Enter move: c2c4 ( R - Resign | D - Draw | U - Undo )")
+        print("Enter move: c2c4 ( [R]esign | [D]raw | [U]ndo | [M]oves )")
         return
 
     def __str__(self):
