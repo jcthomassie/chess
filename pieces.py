@@ -7,6 +7,8 @@ Created on Fri Mar  8 09:57:04 2019
 import traceback
 import copy
 
+from collections.abc import Iterable
+
 ###############################################################################
 #  GLOBALS                                                                    #
 ###############################################################################
@@ -16,6 +18,7 @@ N_RANKS = 8
 N_FILES = 8
 RANK_ZERO = "8"
 FILE_ZERO = "A"
+UNICODE_PIECES = False
 
 # COLORS / RESULTS
 WHITE = 0
@@ -39,138 +42,154 @@ class Square:
         """
         Takes a tuple or string of length 2 as input.
         """
+        # Parse square
         if isinstance(position, Square):
             position = ( position.row, position.col )
+        # Parse string
         if isinstance(position, str):
             if len(position) != 2:
                 raise ValueError("Square position string must be 2 characters!")
-            pos_str = position
+            pos_str = position.upper()
             pos_tup = ( self.rank_to_row(pos_str[1]), self.file_to_col(pos_str[0]) )
+        # Parse (row, col) tuple
         elif isinstance(position, tuple):
-            if ( len(position) != 2 or not isinstance(position[0], int) 
+            if ( len(position) != 2 or not isinstance(position[0], int)
                                  or not isinstance(position[1], int) ):
                 raise ValueError("Square position tuple must contain two integers!")
             pos_tup = position
             pos_str = self.col_to_file(pos_tup[1]) + self.row_to_rank(pos_tup[0])
         else:
             raise TypeError("Square position must be a string or tuple!")
+        # Check if in bounds
+        if not pos_tup[0] in range(0, N_RANKS):
+            raise IndexError("Rank out of bounds!")
+        if not pos_tup[1] in range(0, N_FILES):
+            raise IndexError("File out of bounds!")
         self.row = pos_tup[0]
         self.col = pos_tup[1]
         self.file = pos_str[0]
         self.rank = pos_str[1]
         return
-        
+
     @staticmethod
     def file_to_col(file):
         """
-        Convert file letter to a column integer 
+        Convert file letter to a column integer
         ( 'A'->0, 'B'->1, ... )
         """
+        if not isinstance(file, str):
+            raise TypeError("File must be a string!")
+        if not file.isalpha():
+            raise ValueError("File must be an alphanumeric letter!")
         return ord(file.upper()) - ord(FILE_ZERO)
-    
+
     @staticmethod
     def col_to_file(col):
         """
-        Convert column integer to file letter 
+        Convert column integer to file letter
         ( 0->'A', 1->'B', ... )
         """
+        if not isinstance(col, int):
+            raise TypeError("Column must be an int!")
         return chr(ord(FILE_ZERO) + col)
-    
+
     @staticmethod
     def rank_to_row(rank):
         """
-        Convert rank string to row integer 
+        Convert rank string to row integer
         ( '8'->0, '1'->7, ... )
         """
+        if not isinstance(rank, str):
+            raise TypeError("Rank must be a string!")
+        if not rank.isdigit():
+            raise ValueError("File must be a digit string!")
         return ord(RANK_ZERO) - ord(rank)
-    
+
     @staticmethod
     def row_to_rank(row):
         """
-        Convert row integer to rank string 
+        Convert row integer to rank string
         ( 0->'8', 7->'1', ... )
         """
+        if not isinstance(row, int):
+            raise TypeError("Row must be an int!")
         return chr(ord(RANK_ZERO) - row)
-        
+
     def __str__(self):
         """
         Return string representation of the square's position
         ( (0, 0)->'A8', (1, 1)->'B8', ... )
         """
         return "{}{}".format(self.file, self.rank)
-    
+
     def __repr__(self):
         return self.__str__()#"Square({})".format(str(self))
-    
+
     def __eq__(self, other):
         if isinstance(other, Square):
             return self.row == other.row and self.col == other.col
         elif isinstance(other, tuple):
             return self.row == tuple[0] and self.row == tuple[1]
-    
+
     def __add__(self, other):
         if isinstance(other, Square):
             return (self.row + other.row, self.col + other.col)
-        
+
     def __sub__(self, other):
         if isinstance(other, Square):
             return (self.row - other.row, self.col - other.col)
 
 
 class Board:
-    
-    def __init__(self):
+
+    def __init__(self, board=None, to_move=WHITE):
+        self.game_history = [ ]
+        self.reset_board(to_move=to_move)
+        return
+
+    def reset_board(self, to_move=WHITE):
+        """
+        Initializes an empty board, clears game history, sets winner to None
+        and to_move to WHITE.
+        """
         # Construct board
-        self.board = [ [ None for _ in range(N_FILES) ] 
-                              for _ in range(N_RANKS) 
+        self.board = [ [ None for _ in range(N_FILES) ]
+                              for _ in range(N_RANKS)
                       ]
         # Game trackers
-        self.to_move = WHITE
-        self.game_history = [ ]
+        self.game_history.clear()
+        self.to_move = to_move
         self.winner = None
+        # TODO: add halfmove/fullmove counts
         return
-    
+
     def __setitem__(self, position, piece):
         """
         Inserts a piece at the specified square position.
         board['A1'] = Rook(WHITE, 'A1')
         """
-        if not isinstance(piece, Piece):
-            raise TypeError("Board can only contain Piece objects!")
         sq = Square(position)
-        if not sq.row in range(0, N_RANKS):
-            raise IndexError("Rank out of bounds!")
-        if not sq.col in range(0, N_FILES):
-            raise IndexError("File out of bounds!")
-        self.board[sq.row][sq.col] = piece
-        return
-    
+        if piece is None or isinstance(piece, Piece):
+            self.board[sq.row][sq.col] = piece
+        else:
+            raise TypeError("Board can only contain Piece and NoneType objects!")
+
     def __getitem__(self, position):
         """
         Gets the piece on the specified square position (None for empty square).
         board['A1'] -> Rook(White, A1)
         """
         sq = Square(position)
-        if not sq.row in range(0, N_RANKS):
-            raise IndexError("Rank out of bounds!")
-        if not sq.col in range(0, N_FILES):
-            raise IndexError("File out of bounds!")
         piece = self.board[sq.row][sq.col]
         return piece
-        
+
     def __delitem__(self, position):
         """
         Removes any piece at the specified board position. Replaces the
         slot with None.
         """
-        sq = Square(position)
-        if not sq.row in range(0, N_RANKS):
-            raise IndexError("Rank out of bounds!")
-        if not sq.col in range(0, N_FILES):
-            raise IndexError("File out of bounds!")
-        self.board[sq.row][sq.col] = None
-        return
-    
+        self[position] = None
+
     def flattened(self):
         """
         Generator to iterate over all squares of the board
@@ -178,7 +197,7 @@ class Board:
         for row in range(0, N_RANKS):
             for col in range(0, N_FILES):
                 yield Square((row, col))
-                
+
     def piece_generator(self, color=None):
         """
         Yields all pieces on the current board. If color is specified, only
@@ -190,14 +209,14 @@ class Board:
                 continue
             if color is None or piece.color == color:
                 yield piece
-    
+
     def add_piece(self, piece, color, square):
         """
         Creates piece of color on square and adds it to the board.
         """
         self[square] = piece(square, color=color)
         return
-    
+
     def square_slice(self, from_square, to_square):
         """
         Slices out a list representation of the squares on the board
@@ -230,9 +249,9 @@ class Board:
                 squares.append(Square(pos_tup))
         else:
             raise IndexError("Slices must be square or diagonal!")
-        
+
         return squares
-    
+
     def piece_slice(self, from_square, to_square):
         """
         Slices out a list representation of the board from_square to_square,
@@ -240,7 +259,7 @@ class Board:
         """
         squares = self.square_slice(from_square, to_square)
         return [ self[s] for s in squares ]
-    
+
     def find_pieces(self, piece_type, color):
         """
         Yeilds pieces of the specified type and color.
@@ -248,7 +267,7 @@ class Board:
         for p in self.piece_generator(color=color):
             if isinstance(p, piece_type):
                 yield p
-    
+
     def obstruction(self, from_square, to_square):
         """
         Return True if there is a piece between the two squares.
@@ -258,31 +277,19 @@ class Board:
         if any(pieces):
             return True
         return False
-    
-    def en_passant(self, pawn, target):
-        """
-        Handle en passant captures.
-        """
-        pass
-    
-    def promote(self, pawn):
-        """
-        Handle pawn promotions.
-        """
-        pass
-    
+
     def get_attackers(self, square, color):
         """
-        Check if any pieces of color are eyeing the square. 
+        Check if any pieces of color are eyeing the square.
         Return list of pieces.
         """
         attackers = [ ]
         for piece in self.piece_generator(color=color):
             threats = self.valid_moves_piece(piece, recaptures=True)
-            
+
             if square in threats:
                 attackers.append(piece)
-        
+
         return attackers
 
     def can_castle(self, king, rook):
@@ -294,14 +301,105 @@ class Board:
             return False
         if self.obstruction(king.square, rook.square):
             return False
-        
+
         # Make sure king doesn't cross through check (include current square)
         path = self.square_slice(king.square, rook.square)[:3]
         for square in path:
             if len(self.get_attackers(square, FLIP_COLOR[king.color])) > 0:
                 return False
         return True
-    
+
+    def valid_castles(self):
+        """
+        Return a list of valid castling moves for the current player.
+        """
+        moves = [ ]
+        return moves
+
+    def valid_en_passant(self):
+        """
+        Return a list of valid en passant moves for the current player.
+        """
+        moves = [ ]
+        return moves
+
+    def valid_moves_king(self, king):
+        """
+        Return a list of all valid moves for a king. Gets list of normal king
+        moves, removes moves that leave the king in check, and adds valid
+        castling moves.
+        """
+        moves = [ ]
+        # Normal moves
+        for square in self.valid_moves_piece(king):
+            # Keep moves that do not result in check
+            if len(self.get_attackers(square, FLIP_COLOR[king.color])) == 0:
+                moves.append(square)
+        # Add castling moves
+        for rook in self.find_pieces(Rook, king.color):
+            if self.can_castle(king, rook):
+                moves.append(self.square_slice(king.square, rook.square)[2])
+        return moves
+
+    def valid_moves_piece(self, piece, recaptures=False):
+        """
+        Return a list of all valid moves for the specified piece.
+        Does not consider whether a move leaves player in check,
+        does not consider castling, does not consider en passant.
+        """
+        moves = [ ]
+        for square in self.flattened():
+            if square == piece.square:
+                continue
+            target = self[square]
+            if target is None:
+                # EMPTY case
+                capture = False
+            elif target.color != piece.color:
+                # CAPTURE case
+                capture = True
+            elif recaptures:
+                # RECAPTURE case
+                capture = True
+            else:
+                continue
+            # Check if move is valid for piece
+            d_row, d_col = square - piece.square
+            if not piece.move_is_valid(d_row, d_col, capture=capture):
+                continue
+            # Check path
+            if not piece.jumps:
+                if self.obstruction(piece.square, square):
+                    continue
+
+            moves.append(square)
+
+        return moves
+
+    def valid_moves_all(self):
+        """
+        Return a list of all valid moves in the current board configuration.
+        """
+        moves = [ ]
+        for piece in self.piece_generator(color=self.to_move):
+            if isinstance(piece, King):
+                moves.append( (piece.square, self.valid_moves_king(piece)) )
+            else:
+                moves.append( (piece.square, self.valid_moves_piece(piece)) )
+        # TODO: Remove moves that leave king in check
+        # TODO: Add en passant moves
+        return moves
+
+    def move_piece(self, from_square, to_square, capture=False, castle=False, en_passant=False):
+        """
+        Moves the piece on from_square to to_square.
+        """
+        piece = self[from_square]
+        piece.move(to_square, capture=capture, castle=castle, en_passant=en_passant)
+        self[to_square] = piece
+        del self[from_square]
+        return
+
     def castle(self, king, rook):
         """
         Process a castle move.
@@ -314,113 +412,87 @@ class Board:
             king_square = path[2]
             rook_square = path[1]
             # Move the pieces
-            king.move(king_square, castle=True)
-            rook.move(rook_square)
-            # Update the board
-            self[king_square] = king
-            self[rook_square] = rook
-            del self[king_old]
-            del self[rook_old]
+            self.move_piece(king_old, king_square, castle=True)
+            self.move_piece(rook_old, rook_square)
         else:
             raise InvalidMoveError("{!r} cannot castle with {!r}!".format(king, rook))
-    
-    def valid_moves_king(self, king):
+
+    def en_passant(self, pawn, target):
         """
-        Return a list of all valid moves for a king.
+        Process an en passant capture.
         """
-        moves = [ ]
-        # Normal moves
-        for square in self.valid_moves_piece(king):
-            threats = self.get_attackers(square, FLIP_COLOR[king.color])
-            if len(threats) == 0:
-                moves.append(square)
-        # Castling
-        for rook in self.find_pieces(Rook, king.color):
-            if self.can_castle(king, rook):
-                moves.append(self.square_slice(king.square, rook.square)[2])
-        return moves
-    
-    def valid_moves_piece(self, piece, recaptures=False):
+        return
+
+    def promote(self, pawn):
         """
-        Return a list of all valid moves for the specified piece.
+        Process a pawn promotion.
         """
-        moves = [ ]
-        for square in self.flattened():
-            if square == piece.square:
-                continue
-            target = self[square]
-            if target is None: 
-                # EMPTY case
-                capture = False
-                castle = False
-            elif target.color != piece.color: 
-                # CAPTURE case
-                capture = True
-                castle = False
-            elif recaptures:
-                # RECAP case
-                capture = True
-                castle = False
-            else:
-                continue
-            # Check if move is valid for piece
-            d_row, d_col = square - piece.square
-            if not piece.move_is_valid(d_row, d_col, capture=capture, castle=castle):
-                continue
-            # Check path
-            if not piece.jumps:
-                if self.obstruction(piece.square, square):
-                    continue
-            
-            moves.append(square)
-            
-        return moves
-    
-    def valid_moves_all(self):
+        return
+
+    def parse_move(self, from_square, to_square):
         """
-        Return a list of all valid moves in the current board configuration.
+        Takes from_square and to_square for move command. Attempts to process
+        the move into a move dictionary. Returns the dictionary.
         """
-        moves = [ ]
-        for piece in self.piece_generator(color=self.to_move):
-            if isinstance(piece, King):
-                moves.append( (piece.square, self.valid_moves_king(piece)) )
-            else:
-                moves.append( (piece.square, self.valid_moves_piece(piece)) )
-        # TODO: Remove moves that leave king in check
-        return moves
-    
-    def move(self, from_square, to_square):
-        """
-        Attempts to move the piece on from_square to to_square.
-        """
-        # TODO: make valid_moves_all only call once per turn
+        displacements = [ (from_square, to_square) ]
         # Check that move is valid
         valid_moves = self.valid_moves_all()
         valid_move_str = "|".join([ "{}{}".format(s0, s1) for s0, s1_list in valid_moves for s1 in s1_list ])
         move_str = "{}{}".format(from_square, to_square)
         if not move_str in valid_move_str:
             raise InvalidMoveError("{} is not a valid move!".format(move_str))
-        
+
         # Get move info
-        piece = self[from_square]
+        #piece = self[from_square]
+
+        # Determine if capture
         if self[to_square] is not None:
             capture = True
         else:
             capture = False
-            
-        # TODO: Handle castling
-        #self.castle(piece, target)
-        
-        # TODO: Handle enpassant
-        
-        # TODO: Handle pawn promotions
-        
-        # Move the piece and update the board
-        piece.move(to_square, capture=capture)
-        self[to_square] = piece
-        del self[from_square]
+
+        # TODO: determine if en passant
+        en_passant = False
+
+        # TODO: determine if castle
+        castle = False
+
+        # TODO: determine if promote
+        promote = False
+
+        return dict( displacements=displacements,
+                     capture=capture,
+                     castle=castle,
+                     en_passant=en_passant,
+                     promote=promote )
+
+    def push_move(self, move_dict):
+        """
+        Takes a list of Square pairs for final displacements. Applies the move
+        to the board.
+        """
+        # Push castle to board
+        if move_dict["castle"]:
+            self.castle()
+        # Push en passant to board
+        elif move_dict["en_passant"]:
+            self.en_passant()
+        # Push promotion to board
+        elif move_dict["promote"]:
+            self.promote()
+        # Push normal move to board
+        else:
+            from_square, to_square = move_dict["displacements"][0]
+            piece = self[from_square]
+            # Move the piece and update the board
+            piece.move(to_square, capture=move_dict["capture"])
+            self[to_square] = piece
+            del self[from_square]
+        # Update and store game state
+        self.game_history.append(copy.deepcopy(self.board))
+        self.to_move = FLIP_COLOR[self.to_move]
         return
-    
+
     def undo_move(self):
         """
         Restore game state from one turn prior. Deletes the most recent move
@@ -428,12 +500,29 @@ class Board:
         """
         if len(self.game_history) == 1:
             raise InvalidMoveError("There are no moves to undo!")
-        self.board = copy.deepcopy(self.game_history[-2])
-        del self.game_history[-2:]
+        # Deleted current board
+        del self.game_history[-1]
+        # Get last board state
+        self.board = copy.deepcopy(self.game_history[-1])
         self.to_move = FLIP_COLOR[self.to_move]
         self.winner = None
         return
-    
+
+    def move(self, move_str):
+        """
+        Takes a move string as input. Trys to make the move, raises an error
+        if the move fails.
+        """
+        try:
+            from_square = Square(move_str[:2])
+            to_square = Square(move_str[2:].strip())
+        except:
+            raise InvalidMoveError("Could not parse move!")
+        # Make move
+        move = self.parse_move(from_square, to_square)
+        self.push_move(move)
+        return
+
     def check(self):
         """
         Return True if current player is in check.
@@ -443,7 +532,7 @@ class Board:
         if len(self.get_attackers(king.square, FLIP_COLOR[king.color])) > 0:
             return True
         return False
-    
+
     def checkmate(self):
         """
         Return True if current player is in checkmate.
@@ -455,7 +544,7 @@ class Board:
             if len(self.valid_moves_king(king)) == 0:
                 return True
         return False
-    
+
     def stalemate(self):
         """
         Return True if current player has no valid moves.
@@ -464,7 +553,7 @@ class Board:
         if not any(self.valid_moves_all()):
             return True
         return False
-    
+
     def evaluate(self):
         """
         Returns the current material point spread.
@@ -495,19 +584,9 @@ class Board:
             if draw.strip().upper() == "A":
                 self.winner = DRAW
         else:
-            try:
-                from_pos = move_input[:2]
-                to_pos = move_input[2:].strip()
-                from_square = Square(from_pos)
-                to_square = Square(to_pos)
-            except:
-                raise InvalidMoveError("Could not parse move!")
-            # Make move
-            self.move(from_square, to_square)
-            self.to_move = FLIP_COLOR[self.to_move]
-            
+            self.move(move_input)
         return True
-    
+
     def play_game(self):
         """
         Facilitate a game via commandline.
@@ -515,8 +594,7 @@ class Board:
         while self.winner is None:
             # Print board, save copy
             self.print_board()
-            self.game_history.append(copy.deepcopy(self.board))
-            
+
             # Game end conditions
             if self.checkmate():
                 self.winner = FLIP_COLOR[self.to_move]
@@ -524,7 +602,7 @@ class Board:
             if self.stalemate():
                 self.winner = DRAW
                 break
-            
+
             # Keep trying to move until a move succeeds
             while True:
                 try:
@@ -532,7 +610,7 @@ class Board:
                     break
                 except (InvalidMoveError, IndexError) as e:
                     print(e)
-        
+
         print("\n\n    * * * * * * * * * *")
         if self.winner == DRAW:
             print("    *    GAME DRAWN   *")
@@ -540,7 +618,7 @@ class Board:
             print("    *   {} WINS!   *".format(COLOR_NAME[self.winner]).upper())
         print("    * * * * * * * * * *\n")
         return
-    
+
     def print_board(self):
         """
         Print a text representation of the current board position.
@@ -569,113 +647,82 @@ class Board:
         print("_________________________________________________________")
         print("Enter move: c2c4 ( R - Resign | D - Draw | U - Undo )")
         return
-    
+
+    @classmethod
+    def parse_fen(cls, fen_str):
+        """
+        Parses a FEN formatted string representation of a chess board into
+        a Board object.
+        """
+        # Check input
+        fields = fen_str.strip().split()
+        if len(fields) != 6:
+            raise ValueError("FEN str does not contain 6 space separated fields!")
+
+        # Create empty board
+        board = cls()
+
+        # Build board
+        for r, row in enumerate(fields[0].split("/")):
+            skips = 0
+            for c, char in enumerate(row):
+                # DIGITS -- skip that many spaces
+                if char.isdigit():
+                    skips += int(char) - 1
+                # LETTER -- make a piece with it
+                else:
+                    col = c + skips
+                    board[(r, col)] = Piece.from_str(char, row=r, col=col)
+
+        # Save copy of board to history
+        board.game_history.append(copy.deepcopy(board.board))
+
+        # Determine whose move
+        to_move = fields[1].lower()
+        if to_move == "w":
+            board.to_move = WHITE
+        elif to_move == "b":
+            board.to_move = BLACK
+        else:
+            raise ValueError("Unrecognized color symbol!")
+
+        # TODO: parse castling state
+
+        # TODO: parse en passant target square
+
+        # TODO: parse halfmove clock
+
+        # TODO: parse fullmove number
+
+        return board
+
     @classmethod
     def standard(cls):
         """
         Construct a standard chess board.
         """
-        s_board = cls()
-        
-        # Populate board
-        s_board.add_piece(Rook,   BLACK, "A8")
-        s_board.add_piece(Knight, BLACK, "B8")
-        s_board.add_piece(Bishop, BLACK, "C8")
-        s_board.add_piece(Queen,  BLACK, "D8")
-        s_board.add_piece(King,   BLACK, "E8")
-        s_board.add_piece(Bishop, BLACK, "F8")
-        s_board.add_piece(Knight, BLACK, "G8")
-        s_board.add_piece(Rook,   BLACK, "H8")
-        for i in range(N_FILES):
-            s_board.add_piece(Pawn, BLACK, (1, i))
-        s_board.add_piece(Rook,   WHITE, "A1")
-        s_board.add_piece(Knight, WHITE, "B1")
-        s_board.add_piece(Bishop, WHITE, "C1")
-        s_board.add_piece(Queen,  WHITE, "D1")
-        s_board.add_piece(King,   WHITE, "E1")
-        s_board.add_piece(Bishop, WHITE, "F1")
-        s_board.add_piece(Knight, WHITE, "G1")
-        s_board.add_piece(Rook,   WHITE, "H1")
-        for i in range(N_FILES):
-            s_board.add_piece(Pawn, WHITE, (6, i))
-        
-        return s_board
-    
+        return cls.parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+
     @classmethod
     def horde(cls):
         """
         Construct a Horde configured chess board.
         """
-        h_board = cls()
-        
-        # Populate board
-        h_board.add_piece(Rook,   BLACK, "A8")
-        h_board.add_piece(Knight, BLACK, "B8")
-        h_board.add_piece(Bishop, BLACK, "C8")
-        h_board.add_piece(Queen,  BLACK, "D8")
-        h_board.add_piece(King,   BLACK, "E8")
-        h_board.add_piece(Bishop, BLACK, "F8")
-        h_board.add_piece(Knight, BLACK, "G8")
-        h_board.add_piece(Rook,   BLACK, "H8")
-        for i in range(N_FILES):
-            h_board.add_piece(Pawn, BLACK, (1, i))
-        h_board.add_piece(Pawn, WHITE, "B5")
-        h_board.add_piece(Pawn, WHITE, "C5")
-        h_board.add_piece(Pawn, WHITE, "F5")
-        h_board.add_piece(Pawn, WHITE, "G5")
-        for i in range(N_FILES):
-            for j in range(4, 8):
-                h_board.add_piece(Pawn, WHITE, (j, i))
-        
-        return h_board
-    
-    @classmethod
-    def test_check(cls):
-        """
-        Constructs a board with check.
-        """
-        t_board = cls()
-        
-        # Populate board
-        t_board.add_piece(King,  BLACK, "A8")
-        t_board.add_piece(Queen, BLACK, "G8")
-        t_board.add_piece(King,  WHITE, "B3")
-        
-        return t_board
-    
+        return cls.parse_fen("rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w KQkq - 0 1")
+
     @classmethod
     def test_mate(cls):
         """
-        Constructs a board with checkmate.
+        Construct a board with checkmate.
         """
-        t_board = cls()
-        t_board.to_move = BLACK
-        
-        # Populate board
-        t_board.add_piece(King,   BLACK, "D4")
-        t_board.add_piece(Knight, BLACK, "C3")
-        t_board.add_piece(King,   WHITE, "B3")
-        t_board.add_piece(Queen,  WHITE, "E5")
-        t_board.add_piece(Knight, WHITE, "G6")
-        
-        return t_board
-    
+        return cls.parse_fen("8/8/1Kn5/3k4/4Q3/6N1/8/8 b KQkq - 0 1")
+
     @classmethod
     def test_castle(cls):
         """
-        Constructs a board with immediate castle.
+        Construct a board with immediate castle.
         """
-        t_board = cls()
-        
-        # Populate board
-        t_board.add_piece(King, WHITE, "E1")
-        t_board.add_piece(Rook, WHITE, "A1")
-        t_board.add_piece(Rook, WHITE, "H1")
-        t_board.add_piece(King, BLACK, "E8")
-        t_board.add_piece(Rook, BLACK, "A8")
-        t_board.add_piece(Rook, BLACK, "H8")
-        
-        return t_board
+        return cls.parse_fen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1")
 
 
 class InvalidMoveError(Exception):
@@ -684,6 +731,13 @@ class InvalidMoveError(Exception):
 ###############################################################################
 #  PIECES                                                                     #
 ###############################################################################
+UNICODE_PIECE_SYMBOLS = dict(( ("R", u"♖"), ("r", u"♜"),
+                               ("N", u"♘"), ("n", u"♞"),
+                               ("B", u"♗"), ("b", u"♝"),
+                               ("Q", u"♕"), ("q", u"♛"),
+                               ("K", u"♔"), ("k", u"♚"),
+                               ("P", u"♙"), ("p", u"♟"),  ))
+
 class Piece:
     """
     Base class for all chess pieces.
@@ -705,27 +759,55 @@ class Piece:
         # Handle init from coordinate string/tuple
         else:
             self.square = Square(locus)
-        
+
+    @staticmethod
+    def from_str(piece_char, row=0, col=0):
+        """
+        Takes a string with 1 letter identifying a piece.
+        Returns that piece.
+        """
+        # Determine color
+        piece_upper = piece_char.upper()
+        if piece_upper == piece_char:
+            color = WHITE
+        else:
+            color = BLACK
+        # Determine piece type
+        if piece_upper == "P":
+            return Pawn((row, col), color=color)
+        elif piece_upper == "N":
+            return Knight((row, col), color=color)
+        elif piece_upper == "B":
+            return Bishop((row, col), color=color)
+        elif piece_upper == "R":
+            return Rook((row, col), color=color)
+        elif piece_upper == "Q":
+            return Queen((row, col), color=color)
+        elif piece_upper == "K":
+            return King((row, col), color=color)
+        else:
+            raise ValueError("Unrecognized piece string: {}".format(piece_char))
+
     @property
     def row(self):
         return self.square.row
-    
+
     @property
     def col(self):
         return self.square.col
-        
+
     @property
     def rank(self):
         return self.square.rank
-    
+
     @property
     def file(self):
         return self.square.file
-        
+
     def move(self, new_square, **kwargs):
         """
-        Takes a position tuple or string as input. Checks if the position 
-        constitutes a valid move from the current square. If it is valid, 
+        Takes a position tuple or string as input. Checks if the position
+        constitutes a valid move from the current square. If it is valid,
         then it updates it's position.
         """
         # Parse coordinate into tuple
@@ -738,11 +820,11 @@ class Piece:
             self.has_moved = True
         else:
             raise InvalidMoveError("{!r} cannot move to {}!".format(self, new_square))
-        
+
     def move_is_valid(self, d_row, d_col, capture=False):
         raise NotImplementedError()
-    
-    def __str__(self):
+
+    def letter(self):
         """
         Single character representation of piece.
         Uppercase for WHITE, lowercase for BLACK.
@@ -751,20 +833,32 @@ class Piece:
             letter = self.__class__.__name__[0].lower()
         else:
             letter = self.__class__.__name__[0]
-        return "{}".format(letter)
-    
+        return letter
+
+    def ustr(self):
+        """
+        Unicode representation of piece
+        """
+        return UNICODE_PIECE_SYMBOLS[self.letter()]
+
+    def __str__(self):
+        if UNICODE_PIECES:
+            return self.ustr()
+        else:
+            return self.letter()
+
     def __repr__(self):
-        return "{}({}, {})".format( self.__class__.__name__, 
-                                    self.square, 
+        return "{}({}, {})".format( self.__class__.__name__,
+                                    self.square,
                                     COLOR_NAME[self.color])
 
 
 class Pawn(Piece):
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.value = 1
-        
+
     def move_is_valid(self, d_row, d_col, capture=False, **kwargs):
         """
         Can move forward 2 if it has not yet moved. Otherwise can only move 1.
@@ -786,11 +880,11 @@ class Pawn(Piece):
 
 
 class Bishop(Piece):
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.value = 3
-        
+
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
         """
@@ -803,12 +897,12 @@ class Bishop(Piece):
 
 
 class Knight(Piece):
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.value = 3
         self.jumps = True
-        
+
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
         """
@@ -818,7 +912,7 @@ class Knight(Piece):
             return True
         else:
             return False
-        
+
     def __str__(self):
         if self.color == BLACK:
             letter = "n"
@@ -828,11 +922,11 @@ class Knight(Piece):
 
 
 class Rook(Piece):
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.value = 5
-        
+
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
         """
@@ -845,11 +939,11 @@ class Rook(Piece):
 
 
 class Queen(Piece):
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.value = 9
-        
+
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
         """
@@ -862,7 +956,7 @@ class Queen(Piece):
 
 
 class King(Piece):
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.value = 5
@@ -877,7 +971,7 @@ class King(Piece):
                 return True
             else:
                 return False
-            
+
         else:
             if sorted([abs(d_col), abs(d_row)]) in ([1, 1], [0, 1]):
                 return True
