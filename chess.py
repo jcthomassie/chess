@@ -4,9 +4,8 @@ Created on Fri Mar  8 09:57:04 2019
 
 @author: jthom
 """
-
 import copy
-from time import time
+import time
 
 ###############################################################################
 #  GLOBALS                                                                    #
@@ -135,11 +134,11 @@ class Square:
         return self.__str__()
 
     def __hash__(self):
-        return int(str(self.row) + str(self.col))
+        return N_RANKS * self.row + self.col
 
     def __eq__(self, other):
         if isinstance(other, Square):
-            return self.row == other.row and self.col == other.col
+            return self.__hash__() == other.__hash__()
         elif isinstance(other, tuple):
             return self.row == tuple[0] and self.row == tuple[1]
 
@@ -184,6 +183,7 @@ class Board:
         self.game_history = [ ]
         self.to_move = to_move
         self.winner = None
+        self.en_passant_square = None
         self.halfmoves = 0
         self.fullmoves = 1
 
@@ -363,6 +363,8 @@ class Board:
         """
         if king.has_moved or rook.has_moved:
             return False
+        if king.row != rook.row:
+            return False
         if self.obstruction(king.square, rook.square):
             return False
 
@@ -407,9 +409,9 @@ class Board:
 
     def valid_targets_king(self, king):
         """
-        Return a list of all valid target squares for a king. Gets list of normal king
-        moves, removes moves that leave the king in check, and adds valid
-        castling moves.
+        Return a list of all valid target squares for a king. Gets list of 
+        normal king moves, removes moves that leave the king in check, and adds 
+        valid castling moves.
         """
         moves = [ ]
         # Normal moves
@@ -497,7 +499,7 @@ class Board:
             cleaned_targets = [ ]
             for to_square in targets:
                 # Try the move on the test_board
-                move = test_board.load_move(from_square, to_square, verify_move=False)
+                move = test_board.load_move(from_square, to_square, validate=False)
                 test_board.push_move(move)
                 # Keep the move if it does not cause check
                 if not test_board.check(color=color):
@@ -514,6 +516,7 @@ class Board:
         Update the stored dictionary of allowed moves. Call this every time the
         board position is changed!
         """
+        # OPTIMIZE
         if self._last_recompute != len(self.game_history):
             self._allowed_moves = self.valid_moves_all()
             self._last_recompute = len(self.game_history)
@@ -522,10 +525,14 @@ class Board:
     def move_piece(self, from_square, to_square, capture=False, castle=False, en_passant=False):
         """
         Moves the piece on from_square to to_square.
-        Does not check for board validity.
+        NOTE: Does not check for validity.
         """
         piece = self[from_square]
-        piece.move(to_square, capture=capture, castle=castle, en_passant=en_passant)
+        piece.move( to_square, 
+                    capture=capture, 
+                    castle=castle, 
+                    en_passant=en_passant, 
+                    validate=False)
         self[to_square] = piece
         del self[from_square]
         return
@@ -533,7 +540,7 @@ class Board:
     def castle(self, king_from_square, king_to_square):
         """
         Process a castle move.
-        Does not check for board validity.
+        NOTE: Does not check for validity.
         """
         # Get King and Rook positions
         king = self[king_from_square]
@@ -567,14 +574,13 @@ class Board:
         # TODO
         return
 
-    def load_move(self, from_square, to_square, verify_move=True):
+    def load_move(self, from_square, to_square, validate=True):
         """
         Takes from_square and to_square for move command. Attempts to process
         the move into a move dictionary. Returns the dictionary.
         """
-        # OPTIMIZE
         # Check that move is valid
-        if verify_move:
+        if validate:
             if not from_square in self.allowed_moves.keys():
                 raise InvalidMoveError("{} cannot move!".format(from_square))
             if not to_square in self.allowed_moves[from_square]:
@@ -668,11 +674,11 @@ class Board:
         except:
             raise InvalidMoveError("Could not parse move!")
         # Make move
-        t0 = time()
+        t0 = time.time()
         self.push_move(self.load_move(from_square, to_square))
         print("Move succeeded!")
         print("Now {} valid moves".format(sum(len(v) for v in self.allowed_moves.values())))
-        t1 = time()
+        t1 = time.time()
         print("Move processed in {:.6f} sec".format(t1-t0))
         return
 
@@ -1104,22 +1110,22 @@ class Piece:
     def file(self):
         return self.square.file
 
-    def move(self, new_square, **kwargs):
+    def move(self, new_square, validate=True, **kwargs):
         """
         Takes a position tuple or string as input. Checks if the position
         constitutes a valid move from the current square. If it is valid,
         then it updates it's position.
         """
-        # Parse coordinate into tuple
-        if new_square == self.square:
-            raise InvalidMoveError("{!r} is already on {}!".format(self, new_square))
         # Check move
-        d_row, d_col = new_square - self.square
-        if self.move_is_valid(d_row, d_col, **kwargs):
-            self.square = new_square
-            self.has_moved = True
-        else:
-            raise InvalidMoveError("{!r} cannot move to {}!".format(self, new_square))
+        if validate:
+            if new_square == self.square:
+                raise InvalidMoveError("{!r} is already on {}!".format(self, new_square))
+            d_row, d_col = new_square - self.square
+            if not self.move_is_valid(d_row, d_col, **kwargs):
+                raise InvalidMoveError("{!r} cannot move to {}!".format(self, new_square))
+        # Apply move
+        self.square = new_square
+        self.has_moved = True
 
     def move_is_valid(self, d_row, d_col, capture=False):
         raise NotImplementedError()
