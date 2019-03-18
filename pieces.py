@@ -7,6 +7,8 @@ Created on Fri Mar  8 09:57:04 2019
 
 import traceback
 import copy
+from functools import wraps
+from time import time
 
 ###############################################################################
 #  GLOBALS                                                                    #
@@ -34,6 +36,19 @@ DRAW = -1
 FLIP_COLOR = dict(( (WHITE, BLACK), (BLACK, WHITE) ))
 COLOR_ORIENTATION = dict(( (WHITE, -1), (BLACK, 1) ))
 COLOR_NAME = dict(((WHITE, "White"), (BLACK, "Black"), (DRAW, "Draw")))
+
+###############################################################################
+#  UTILS                                                                      #
+###############################################################################
+def timing(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time()
+        result = func(*args, **kwargs)
+        end = time()
+        print("{!r} took {:.4f} sec".format(func, end-start))
+        return result
+    return wrapper
 
 ###############################################################################
 #  BOARD CORE                                                                 #
@@ -170,6 +185,9 @@ class Board:
         self.winner = None
         self.halfmoves = 0
         self.fullmoves = 1
+
+        self._allowed_moves = dict( )
+        self._last_recompute = 0
         return
 
     def __setitem__(self, position, piece):
@@ -481,6 +499,17 @@ class Board:
                 cleaned[from_square] = cleaned_targets
         return cleaned
 
+    @property
+    def allowed_moves(self):
+        """
+        Update the stored dictionary of allowed moves. Call this every time the
+        board position is changed!
+        """
+        if self._last_recompute != len(self.game_history):
+            self._allowed_moves = self.valid_moves_all()
+            self._last_recompute = len(self.game_history)
+        return self._allowed_moves
+
     def move_piece(self, from_square, to_square, capture=False, castle=False, en_passant=False):
         """
         Moves the piece on from_square to to_square.
@@ -537,11 +566,10 @@ class Board:
         # OPTIMIZE
         # Check that move is valid
         if verify_move:
-            valid_moves = self.valid_moves_all()
-            valid_move_str = "|".join([ "{}{}".format(s0, s1) for s0, targs in valid_moves.items() for s1 in targs ])
-            move_str = "{}{}".format(from_square, to_square)
-            if not move_str in valid_move_str:
-                raise InvalidMoveError("{} is not a valid move!".format(move_str))
+            if not from_square in self.allowed_moves.keys():
+                raise InvalidMoveError("{} cannot move!".format(from_square))
+            if not to_square in self.allowed_moves[from_square]:
+                raise InvalidMoveError("{!r} cannot move to {}!".format(self[from_square], to_square))
 
         # Get pieces
         piece = self[from_square]
@@ -620,7 +648,7 @@ class Board:
         # TODO: update halfmoves and fullmoves
         return
 
-    def parse_move(self, move_str):
+    def process_move(self, move_str):
         """
         Takes a move string as input. Trys to make the move, raises an error
         if the move fails.
@@ -631,7 +659,12 @@ class Board:
         except:
             raise InvalidMoveError("Could not parse move!")
         # Make move
+        t0 = time()
         self.push_move(self.load_move(from_square, to_square))
+        print("Move succeeded!")
+        print("Now {} valid moves".format(sum(len(v) for v in self.allowed_moves.values())))
+        t1 = time()
+        print("Move processed in {:.6f} sec".format(t1-t0))
         return
 
     def find_king(self, color=None):
@@ -666,7 +699,7 @@ class Board:
         Return True if current player is in checkmate.
         Return False otherwise.
         """
-        if self.check() and len(self.valid_moves_all()) == 0:
+        if self.check() and len(self.allowed_moves) == 0:
             return True
         return False
 
@@ -675,7 +708,7 @@ class Board:
         Return True if current player has no valid moves.
         Return False otherwise.
         """
-        if len(self.valid_moves_all()) == 0:
+        if len(self.allowed_moves) == 0:
             return True
         return False
 
@@ -693,6 +726,20 @@ class Board:
                 score -= piece.value
         return score
 
+    def print_square_moves(self, pos_str):
+        """
+        Print all valid moves from the specified square.
+        """
+        sq = Square(pos_str)
+        piece = self[sq]
+        if piece is None:
+            print("{} is empty!".format(sq))
+        elif piece.square in self.allowed_moves:
+            print("{!r}: {}".format(piece, self.allowed_moves[sq]))
+        else:
+            print("No valid moves for {!r}!".format(piece))
+        return
+
     def play_turn(self):
         """
         Process the events of a turn.
@@ -706,13 +753,15 @@ class Board:
                 if draw.strip().upper() == "A":
                     self.winner = DRAW
                     actionable = True
-            elif move_input == "L":
-                print("Valid moves:")
-                print(self.valid_moves_all())
+            elif move_input == "M":
+                for sq in self.allowed_moves.keys():
+                    self.print_square_moves(sq)
+            elif len(move_input) == 1:
+                ptype = type(Piece.from_str(move_input))
+                for piece in self.find_pieces(ptype, self.to_move):
+                    self.print_square_moves(piece.square)
             elif len(move_input) == 2:
-                piece = self[move_input]
-                print("Valid moves for {!r}:".format(piece))
-                print(self.valid_moves_all()[piece.square])
+                self.print_square_moves(move_input)
             else:
                 actionable = True
 
@@ -722,7 +771,7 @@ class Board:
         elif move_input == "U":
             self.undo_move()
         else:
-            self.parse_move(move_input)
+            self.process_move(move_input)
         return True
 
     def play_game(self):
@@ -1186,7 +1235,7 @@ class King(Piece):
 #  MAIN                                                                       #
 ###############################################################################
 def main():
-    board = Board.test_mate()
+    board = Board.test_castle()
     board.play_game()
 
 if __name__ == "__main__":
