@@ -19,6 +19,7 @@ N_RANKS = 8
 N_FILES = 8
 RANK_ZERO = "8"
 FILE_ZERO = "A"
+
 UNICODE_PIECES = False
 UNICODE_PIECE_SYMBOLS = {
     "R": u"♖", "r": u"♜",
@@ -66,9 +67,10 @@ class Square:
         """
         # Parse square
         if isinstance(position, Square):
-            position = ( position.row, position.col )
+            pos_tup = ( position.row, position.col )
+            pos_str = str(position)
         # Parse string
-        if isinstance(position, str):
+        elif isinstance(position, str):
             if len(position) != 2:
                 raise ValueError("Square position string must be 2 characters!")
             pos_str = position.upper()
@@ -952,6 +954,7 @@ class Board:
         """
         Return a mulitline string of the board.
         """
+        # TODO: Generalize letter row printing
         letters =    "       A   B   C   D   E   F   G   H       "
         edge_line =  "     +" + "---+" * N_FILES
         piece_line = "   {} | " + "{} | " * N_FILES
