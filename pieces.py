@@ -190,7 +190,7 @@ class Board:
         """
         self[position] = None
 
-    def flattened(self):
+    def square_generator(self):
         """
         Generator to iterate over all squares of the board
         """
@@ -203,12 +203,12 @@ class Board:
         Yields all pieces on the current board. If color is specified, only
         pieces of the specified color are yielded.
         """
-        for square in self.flattened():
-            piece = self[square]
-            if piece is None:
-                continue
-            if color is None or piece.color == color:
-                yield piece
+        for row in self.board:
+            for piece in row:
+                if piece is None:
+                    continue
+                if color is None or piece.color == color:
+                    yield piece
 
     def add_piece(self, piece, color, square):
         """
@@ -348,7 +348,7 @@ class Board:
         does not consider castling, does not consider en passant.
         """
         moves = [ ]
-        for square in self.flattened():
+        for square in self.square_generator():
             if square == piece.square:
                 continue
             target = self[square]
@@ -592,8 +592,7 @@ class Board:
         Facilitate a game via commandline.
         """
         while self.winner is None:
-            # Print board, save copy
-            self.print_board()
+            self.print_turn_header()
 
             # Game end conditions
             if self.checkmate():
@@ -619,34 +618,47 @@ class Board:
         print("    * * * * * * * * * *\n")
         return
 
-    def print_board(self):
+    def construct_fen(self):
         """
-        Print a text representation of the current board position.
+        Constructs a FEN formatted string representation of the current board.
         """
-        letters = "       A   B   C   D   E   F   G   H       "
-        if self.to_move == WHITE:
-            display = [ ( r, row[:] ) for r, row in enumerate(self.board[:]) ]
-        else: # flip for black
-            display = [ ( N_RANKS - r - 1, row[::-1] ) for r, row in enumerate(self.board[::-1]) ]
-            letters = letters[::-1]
-        edge = "     +" + "---+" * N_FILES
-        mid = "   {} | " + "{} | " * N_FILES
-        print("_________________________________________________________")
-        print("\n")
-        print(edge)
-        for r, row in display:
-            row = [ " " if p is None else p for p in row ]
-            print(mid.format(Square.row_to_rank(r), *row))
-            print(edge)
-        print(letters)
-        print()
-        print("       {} to play!  (Material: {})".format(COLOR_NAME[self.to_move], self.evaluate()))
-        # Announce check
-        if self.check():
-            print("\n       * * * King is in check! * * *")
-        print("_________________________________________________________")
-        print("Enter move: c2c4 ( R - Resign | D - Draw | U - Undo )")
-        return
+        # Get board str
+        row_strs = [ ]
+        for row in self.board:
+            row_str = ""
+            skips = 0
+            for piece in row:
+                if piece is None:
+                    skips += 1
+                elif skips != 0:
+                    row_str += str(skips)
+                    skips = 0
+                else:
+                    row_str += str(piece)
+            else:
+                # Handle empty rows
+                if skips != 0:
+                    row_str += str(skips)
+            row_strs.append(row_str)
+        board_str = "/".join(row_strs)
+
+        # TODO: parse castling state
+        castle_str = "KQkq"
+
+        # TODO: parse en passant target square
+        en_passant_str = "-"
+
+        # TODO: parse halfmove clock
+        half_move_str = "0"
+
+        # TODO: parse fullmove number
+        full_move_str = "1"
+
+        return " ".join([ board_str,
+                          castle_str,
+                          en_passant_str,
+                          half_move_str,
+                          full_move_str, ])
 
     @classmethod
     def parse_fen(cls, fen_str):
@@ -724,6 +736,46 @@ class Board:
         """
         return cls.parse_fen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1")
 
+    def print_turn_header(self):
+        """
+        Print a text representation of the current board position.
+        """
+        print("_________________________________________________________")
+        print("\n")
+        print(self)
+        print()
+        print("       {} to play!  (Material: {})".format(COLOR_NAME[self.to_move], self.evaluate()))
+        # Announce check
+        if self.check():
+            print("\n       * * * King is in check! * * *")
+        print("_________________________________________________________")
+        print("Enter move: c2c4 ( R - Resign | D - Draw | U - Undo )")
+        return
+
+    def __str__(self):
+        """
+        Return a mulitline string of the board.
+        """
+        letters =    "       A   B   C   D   E   F   G   H       "
+        edge_line =  "     +" + "---+" * N_FILES
+        piece_line = "   {} | " + "{} | " * N_FILES
+
+        if self.to_move == WHITE:
+            display = [ ( r, row[:] ) for r, row in enumerate(self.board[:]) ]
+        else: # flip for black
+            display = [ ( N_RANKS - r - 1, row[::-1] ) for r, row in enumerate(self.board[::-1]) ]
+            letters = letters[::-1]
+
+        board_str = edge_line + "\n"
+        for r, row in display:
+            row = [ " " if p is None else p for p in row ]
+            board_str += piece_line.format(Square.row_to_rank(r), *row) + "\n"
+            board_str += edge_line + "\n"
+        board_str += letters
+        return board_str
+
+    def __repr__(self):
+        return "Board({})".format(self.construct_fen())
 
 class InvalidMoveError(Exception):
     pass
@@ -982,7 +1034,7 @@ class King(Piece):
 #  MAIN                                                                       #
 ###############################################################################
 def main():
-    board = Board.test_mate()
+    board = Board.standard()
     board.play_game()
 
 if __name__ == "__main__":
