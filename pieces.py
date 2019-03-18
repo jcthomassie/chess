@@ -20,12 +20,14 @@ N_FILES = 8
 RANK_ZERO = "8"
 FILE_ZERO = "A"
 UNICODE_PIECES = False
-UNICODE_PIECE_SYMBOLS = dict(( ("R", u"♖"), ("r", u"♜"),
-                               ("N", u"♘"), ("n", u"♞"),
-                               ("B", u"♗"), ("b", u"♝"),
-                               ("Q", u"♕"), ("q", u"♛"),
-                               ("K", u"♔"), ("k", u"♚"),
-                               ("P", u"♙"), ("p", u"♟"),  ))
+UNICODE_PIECE_SYMBOLS = {
+    "R": u"♖", "r": u"♜",
+    "N": u"♘", "n": u"♞",
+    "B": u"♗", "b": u"♝",
+    "Q": u"♕", "q": u"♛",
+    "K": u"♔", "k": u"♚",
+    "P": u"♙", "p": u"♟",
+}
 
 # COLORS / RESULTS
 WHITE = 0
@@ -33,9 +35,9 @@ BLACK = 1
 DRAW = -1
 
 # COLOR INFO
-FLIP_COLOR = dict(( (WHITE, BLACK), (BLACK, WHITE) ))
-COLOR_ORIENTATION = dict(( (WHITE, -1), (BLACK, 1) ))
-COLOR_NAME = dict(((WHITE, "White"), (BLACK, "Black"), (DRAW, "Draw")))
+FLIP_COLOR = { WHITE: BLACK, BLACK: WHITE }
+COLOR_ORIENTATION = { WHITE: -1, BLACK: 1 }
+COLOR_NAME = { WHITE: "White", BLACK: "Black", DRAW: "Draw" }
 
 ###############################################################################
 #  UTILS                                                                      #
@@ -165,12 +167,23 @@ class Square:
 
 class Board:
 
-    def __init__(self, board=None, to_move=WHITE):
-        self.game_history = [ ]
-        self.reset_board(to_move=to_move)
-        return
+    fen_library = {
+        "Standard" : "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"\
+                     " w KQkq - 0 1",
+        "Horde"    : "rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/" \
+                     "PPPPPPPP/PPPPPPPP/PPPPPPPP w KQkq - 0 1",
+        "Pin"      : "R2rk2r/3pbp2/8/8/8/8/4Q3/R3K2R w KQkq - 0 1",
+        "Mate"     : "8/8/1Kn5/3k4/4Q3/6N1/8/8 b KQkq - 0 1",
+        "Castle"   : "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+            }
 
-    def reset_board(self, to_move=WHITE):
+    def __init__(self, fen=None):
+        if fen is None:
+            self.clear_board()
+        else:
+            self.load_fen(fen)
+
+    def clear_board(self, to_move=WHITE):
         """
         Initializes an empty board, clears game history, sets winner to None
         and to_move to WHITE.
@@ -180,7 +193,7 @@ class Board:
                               for _ in range(N_RANKS)
                       ]
         # Game trackers
-        self.game_history.clear()
+        self.game_history = [ ]
         self.to_move = to_move
         self.winner = None
         self.halfmoves = 0
@@ -756,12 +769,13 @@ class Board:
             elif move_input == "M":
                 for sq in self.allowed_moves.keys():
                     self.print_square_moves(sq)
-            elif len(move_input) == 1:
-                ptype = type(Piece.from_str(move_input))
-                for piece in self.find_pieces(ptype, self.to_move):
-                    self.print_square_moves(piece.square)
             elif len(move_input) == 2:
-                self.print_square_moves(move_input)
+                if move_input[1] == "?":
+                    ptype = type(Piece.from_str(move_input[0]))
+                    for piece in self.find_pieces(ptype, self.to_move):
+                        self.print_square_moves(piece.square)
+                else:
+                    self.print_square_moves(move_input)
             else:
                 actionable = True
 
@@ -805,7 +819,73 @@ class Board:
         print("    * * * * * * * * * *\n")
         return
 
-    def construct_fen(self):
+    def load_fen(self, fen_str):
+        """
+        Parses a FEN formatted string representation of a chess board into
+        current board.
+        """
+        if not isinstance(fen_str, str):
+            raise TypeError("Input must be a FEN string or a name from the FEN library!")
+
+        # If input is a name from the FEN library, get the FEN string
+        fen_str = fen_str.strip()
+        if fen_str in self.fen_library:
+            fen_str = self.fen_library[fen_str]
+
+        # Check FEN string
+        fields = fen_str.split()
+        if len(fields) != 6:
+            raise ValueError("FEN str does not contain 6 space separated fields!")
+
+        # Clear board
+        self.clear_board()
+
+        # Build board
+        for r, row in enumerate(fields[0].split("/")):
+            skips = 0
+            for c, char in enumerate(row):
+                # DIGITS -- skip that many spaces
+                if char.isdigit():
+                    skips += int(char) - 1
+                # LETTER -- make a piece with it
+                else:
+                    col = c + skips
+                    self[(r, col)] = Piece.from_str(char, row=r, col=col)
+
+        # Save copy of board to history
+        self.game_history.append(copy.deepcopy(self.board))
+
+        # Determine whose move
+        to_move = fields[1].lower()
+        if to_move == "w":
+            self.to_move = WHITE
+        elif to_move == "b":
+            self.to_move = BLACK
+        else:
+            raise ValueError("Unrecognized color symbol!")
+
+        # TODO: parse castling state
+
+        # TODO: parse en passant target square
+
+        # Parse halfmoves
+        try:
+            self.halfmoves = int(fields[4])
+        except ValueError:
+            raise ValueError("Halfmove count is not an integer!")
+        if self.halfmoves < 0:
+            raise ValueError("Halfmove count must be non-negative!")
+        # Parse fullmoves
+        try:
+            self.fullmoves = int(fields[5])
+        except ValueError:
+            raise ValueError("Fullmove count is not an integer!")
+        if self.fullmoves < 1:
+            raise ValueError("Fullmove count must be greater than 0!")
+        return self
+
+    @property
+    def fen(self):
         """
         Constructs a FEN formatted string representation of the current board.
         """
@@ -829,6 +909,9 @@ class Board:
             row_strs.append(row_str)
         board_str = "/".join(row_strs)
 
+        # Get to move
+        move_str = COLOR_NAME[self.to_move][0].lower()
+
         # TODO: parse castling state
         castle_str = "KQkq"
 
@@ -842,103 +925,11 @@ class Board:
         full_move_str = str(self.fullmoves)
 
         return " ".join([ board_str,
+                          move_str,
                           castle_str,
                           en_passant_str,
                           half_move_str,
                           full_move_str, ])
-
-    @classmethod
-    def parse_fen(cls, fen_str):
-        """
-        Parses a FEN formatted string representation of a chess board into
-        a Board object.
-        """
-        # Check input
-        fields = fen_str.strip().split()
-        if len(fields) != 6:
-            raise ValueError("FEN str does not contain 6 space separated fields!")
-
-        # Create empty board
-        board = cls()
-
-        # Build board
-        for r, row in enumerate(fields[0].split("/")):
-            skips = 0
-            for c, char in enumerate(row):
-                # DIGITS -- skip that many spaces
-                if char.isdigit():
-                    skips += int(char) - 1
-                # LETTER -- make a piece with it
-                else:
-                    col = c + skips
-                    board[(r, col)] = Piece.from_str(char, row=r, col=col)
-
-        # Save copy of board to history
-        board.game_history.append(copy.deepcopy(board.board))
-
-        # Determine whose move
-        to_move = fields[1].lower()
-        if to_move == "w":
-            board.to_move = WHITE
-        elif to_move == "b":
-            board.to_move = BLACK
-        else:
-            raise ValueError("Unrecognized color symbol!")
-
-        # TODO: parse castling state
-
-        # TODO: parse en passant target square
-
-        # Parse halfmoves
-        try:
-            board.halfmoves = int(fields[4])
-        except ValueError:
-            raise ValueError("Halfmove count is not an integer!")
-        if board.halfmoves < 0:
-            raise ValueError("Halfmove count must be non-negative!")
-        # Parse fullmoves
-        try:
-            board.fullmoves = int(fields[5])
-        except ValueError:
-            raise ValueError("Fullmove count is not an integer!")
-        if board.fullmoves < 1:
-            raise ValueError("Fullmove count must be greater than 0!")
-        return board
-
-    @classmethod
-    def standard(cls):
-        """
-        Construct a standard chess board.
-        """
-        return cls.parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-
-    @classmethod
-    def horde(cls):
-        """
-        Construct a Horde configured chess board.
-        """
-        return cls.parse_fen("rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w KQkq - 0 1")
-
-    @classmethod
-    def test_pin(cls):
-        """
-        Construct a board with some pins.
-        """
-        return cls.parse_fen("R2rk2r/3pbp2/8/8/8/8/4Q3/R3K2R w KQkq - 0 1")
-
-    @classmethod
-    def test_mate(cls):
-        """
-        Construct a board with checkmate.
-        """
-        return cls.parse_fen("8/8/1Kn5/3k4/4Q3/6N1/8/8 b KQkq - 0 1")
-
-    @classmethod
-    def test_castle(cls):
-        """
-        Construct a board with immediate castle.
-        """
-        return cls.parse_fen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1")
 
     def print_turn_header(self):
         """
@@ -980,7 +971,7 @@ class Board:
         return board_str
 
     def __repr__(self):
-        return "Board({})".format(self.construct_fen())
+        return "Board({})".format(self.fen)
 
 class InvalidMoveError(Exception):
     pass
@@ -1235,7 +1226,7 @@ class King(Piece):
 #  MAIN                                                                       #
 ###############################################################################
 def main():
-    board = Board.test_castle()
+    board = Board("Standard")
     board.play_game()
 
 if __name__ == "__main__":
