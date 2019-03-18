@@ -5,9 +5,7 @@ Created on Fri Mar  8 09:57:04 2019
 @author: jthom
 """
 
-import traceback
 import copy
-from functools import wraps
 from time import time
 
 ###############################################################################
@@ -39,19 +37,6 @@ DRAW = -1
 FLIP_COLOR = { WHITE: BLACK, BLACK: WHITE }
 COLOR_ORIENTATION = { WHITE: -1, BLACK: 1 }
 COLOR_NAME = { WHITE: "White", BLACK: "Black", DRAW: "Draw" }
-
-###############################################################################
-#  UTILS                                                                      #
-###############################################################################
-def timing(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        start = time()
-        result = func(*args, **kwargs)
-        end = time()
-        print("{!r} took {:.4f} sec".format(func, end-start))
-        return result
-    return wrapper
 
 ###############################################################################
 #  BOARD CORE                                                                 #
@@ -179,7 +164,8 @@ class Board:
         "Castle"   : "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
             }
 
-    def __init__(self, fen=None):
+    def __init__(self, fen="Standard"):
+        self._board_fmt_str = None
         if fen is None:
             self.clear_board()
         else:
@@ -232,12 +218,20 @@ class Board:
         """
         self[position] = None
 
-    def square_generator(self):
+    def square_generator(self, reverse=False):
         """
-        Generator to iterate over all squares of the board
+        Generator to iterate over all squares of the board. Starts at (0, 0)
+        and iterates over rows then columns. If reverse, starts at (N, N) and
+        works backwards.
         """
-        for row in range(0, N_RANKS):
-            for col in range(0, N_FILES):
+        if reverse:
+            row_iter = range(N_RANKS - 1, -1, -1)
+            col_iter = range(N_FILES - 1, -1, -1)
+        else:
+            row_iter = range(0, N_RANKS)
+            col_iter = range(0, N_FILES)
+        for row in row_iter:
+            for col in col_iter:
                 yield Square((row, col))
 
     def piece_generator(self, color=None):
@@ -741,20 +735,6 @@ class Board:
                 score -= piece.value
         return score
 
-    def print_square_moves(self, pos_str):
-        """
-        Print all valid moves from the specified square.
-        """
-        sq = Square(pos_str)
-        piece = self[sq]
-        if piece is None:
-            print("{} is empty!".format(sq))
-        elif piece.square in self.allowed_moves:
-            print("{!r}: {}".format(piece, self.allowed_moves[sq]))
-        else:
-            print("No valid moves for {!r}!".format(piece))
-        return
-
     def play_turn(self):
         """
         Process the events of a turn.
@@ -768,16 +748,16 @@ class Board:
                 if draw.strip().upper() == "A":
                     self.winner = DRAW
                     actionable = True
-            elif move_input == "M":
-                for sq in self.allowed_moves.keys():
-                    self.print_square_moves(sq)
-            elif len(move_input) == 2:
-                if move_input[1] == "?":
+            elif move_input[-1] == "?":
+                if move_input == "?":
+                    for sq in self.allowed_moves.keys():
+                        self.print_square_moves(sq)
+                elif move_input[1] == "?":
                     ptype = type(Piece.from_str(move_input[0]))
                     for piece in self.find_pieces(ptype, self.to_move):
                         self.print_square_moves(piece.square)
                 else:
-                    self.print_square_moves(move_input)
+                    self.print_square_moves(move_input[:-1])
             else:
                 actionable = True
 
@@ -938,43 +918,116 @@ class Board:
         Print a text representation of the current game state along with
         move hints.
         """
+        space = "        "
         print("_________________________________________________________")
         print("\n")
-        print(self)
+        print(self.filled_board_str(orient=self.to_move, notate=True, notate_prefix=space))
         print()
-        print("       {} to play!  (Material: {})".format(COLOR_NAME[self.to_move], self.evaluate()))
+        print(space + "     {} to play!  (Material: {})".format(COLOR_NAME[self.to_move], self.evaluate()))
         # Announce check
         if self.check():
-            print("\n       * * * King is in check! * * *")
+            print("\n" + space + "  * * * King is in check! * * *")
         print("_________________________________________________________")
-        print("Enter move: c2c4 ( [R]esign | [D]raw | [U]ndo | [M]oves )")
+        print("Enter move: c2c4 ( [R]esign | [D]raw | [U]ndo | [?] )")
         return
+    
+    @property
+    def board_fmt_str(self):
+        """
+        Creates multiline string for the board with empty format slots in all
+        squares.
+        """
+        if self._board_fmt_str is None:
+            edge_line =  "+" + "---+" * N_FILES + "\n"
+            piece_line = "|" + "{}|" * N_FILES + "\n"
+            self._board_fmt_str = edge_line
+            for r in range(0, N_RANKS):
+                self._board_fmt_str += piece_line + edge_line
+        return self._board_fmt_str
+    
+    def filled_board_str(self, orient=WHITE, notate=False, notate_prefix="", highlights=[]):
+        """
+        Populates the empty board format string with the pieces from the
+        current board state. If reverse is True, shows perspective from top
+        of board. If notate is True, square coordinates are added on the
+        bottom edge and left edge. The notate_prefix string is added at the 
+        front of every line when notation is applied. Highlights is a list of 
+        squares to be wrapped with parentheses.
+        """
+        if orient == BLACK:
+            reverse = True
+        else:
+            reverse = False
+        
+        wrapped = ( (self[s], "({})") if s in highlights else (self[s], " {} ") 
+                        for s in self.square_generator(reverse=reverse) )
+        str_gen = ( wrap.format(" ") if p is None else wrap.format(p) 
+                        for p, wrap in wrapped )
+        filled = self.board_fmt_str.format(*str_gen)
+        
+        if notate:
+            if reverse:
+                row_range = range(N_RANKS - 1, -1, -1)
+                col_range = range(N_FILES - 1, -1, -1)
+            else:
+                row_range = range(0, N_RANKS)
+                col_range = range(0, N_FILES)
+            # Add rank numbers
+            rank_fmt = " {} "
+            rank_gen = ( Square.row_to_rank(r) for r in row_range )
+            filled_rows = filled.strip().split("\n")
+            filled = ""
+            for i, row in enumerate(filled_rows):
+                filled += notate_prefix
+                if i % 2 == 1:
+                    filled += rank_fmt.format(next(rank_gen))
+                else:
+                    filled += rank_fmt.format(" ")
+                filled += row + "\n"
+            # Add file letters
+            file_gen = ( Square.col_to_file(c) for c in col_range )
+            files = " " + " ".join(" {} ".format(l) for l in file_gen)
+            filled += notate_prefix + rank_fmt.format(" ") + files
+        return filled
+    
+    def print_square_moves(self, pos_str):
+        """
+        Print all valid moves from the specified square.
+        """
+        sq = Square(pos_str)
+        piece = self[sq]
+        if piece is None:
+            print("{} is empty!".format(sq))
+        elif piece.square in self.allowed_moves:
+            print("{!r}: {}".format(piece, self.allowed_moves[sq]))
+            print(self.moves_board_str(sq) + "\n")
+        else:
+            print("No valid moves for {!r}!".format(piece))
+        return
+        
+    def moves_board_str(self, from_square, notate_prefix=""):
+        """
+        Return a mulitline string of the board showing the available moves
+        for from_square.
+        """
+        # Get list of valid target squares
+        targets = [ from_square ]
+        if from_square in self.allowed_moves:    
+            targets.extend( self.allowed_moves[from_square] )
+        # Get the board string
+        return self.filled_board_str( orient=self.to_move, 
+                                      notate=True, 
+                                      highlights=targets, 
+                                      notate_prefix=notate_prefix )
 
     def __str__(self):
         """
-        Return a mulitline string of the board.
+        Return a mulitline string of the current board.
         """
-        # TODO: Generalize letter row printing
-        letters =    "       A   B   C   D   E   F   G   H       "
-        edge_line =  "     +" + "---+" * N_FILES
-        piece_line = "   {} | " + "{} | " * N_FILES
-
-        if self.to_move == WHITE:
-            display = [ ( r, row[:] ) for r, row in enumerate(self.board[:]) ]
-        else: # flip for black
-            display = [ ( N_RANKS - r - 1, row[::-1] ) for r, row in enumerate(self.board[::-1]) ]
-            letters = letters[::-1]
-
-        board_str = edge_line + "\n"
-        for r, row in display:
-            row = [ " " if p is None else p for p in row ]
-            board_str += piece_line.format(Square.row_to_rank(r), *row) + "\n"
-            board_str += edge_line + "\n"
-        board_str += letters
-        return board_str
+        return self.filled_board_str(orient=self.to_move, notate=True)
 
     def __repr__(self):
-        return "Board({})".format(self.fen)
+        return "Board('{}')".format(self.fen)
 
 class InvalidMoveError(Exception):
     pass
@@ -1233,7 +1286,4 @@ def main():
     board.play_game()
 
 if __name__ == "__main__":
-    try:
-        main()
-    except:
-        traceback.print_exc()
+    main()
