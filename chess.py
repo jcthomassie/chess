@@ -61,12 +61,18 @@ class Square:
 
     @property
     def file(self):
+        """
+        Only generate file string when asked first time.
+        """
         if self._file is None:
             self._file = self.col_to_file(self.col)
         return self._file
 
     @property
     def rank(self):
+        """
+        Only generate rank string when asked first time.
+        """
         if self._rank is None:
             self._rank = self.row_to_rank(self.row)
         return self._rank
@@ -178,23 +184,26 @@ class Board:
         "PTest"    : "1r2qkb1/p5pp/4pp2/B2QQN1N/2R4/PP6/2P5/4K3 b KQkq - 0 1",
             }
 
-    def __init__(self, fen="Standard"):
+    def __init__(self, fen="Standard", board=None):
         self._board_fmt_str = None
         self._square_list = None
         if fen is None:
-            self.clear_board()
+            self.reset(board=board)
         else:
             self.load_fen(fen)
 
-    def clear_board(self, to_move=WHITE):
+    def reset(self, board=None, to_move=WHITE):
         """
         Initializes an empty board, clears game history, sets winner to None
-        and to_move to WHITE.
+        and to_move to WHITE. If board is specified, use that as the board.
         """
         # Construct board
-        self.board = [ [ None for _ in range(N_FILES) ]
-                              for _ in range(N_RANKS)
-                      ]
+        if board is None:
+            self.board = [ [ None for _ in range(N_FILES) ]
+                                  for _ in range(N_RANKS)
+                                  ]
+        else:
+            self.board = board
         # Game trackers
         self.game_history = [ ]
         self.to_move = to_move
@@ -335,7 +344,7 @@ class Board:
         inclusive. Only works for square/diagonal displacements.
         """
         squares = self.square_slice(from_square, to_square)
-        return [ self[s] for s in squares ]
+        return [ self.board[s.row][s.col] for s in squares ]
 
     def find_pieces(self, piece_type, color):
         """
@@ -474,7 +483,7 @@ class Board:
         for square in self.square_list():
             if square == piece.square:
                 continue
-            target = self[square]
+            target = self.board[square.row][square.col]
             if target is None:
                 # EMPTY case
                 capture = False
@@ -540,13 +549,16 @@ class Board:
             cleaned_targets = [ ]
             for to_square in targets:
                 # Try the move on the test_board
+                target = test_board.board[to_square.row][to_square.col]
                 move = test_board.load_move(from_square, to_square, validate=False)
-                test_board.push_move(move)
+                test_board.push_move(move, store=False)
                 # Keep the move if it does not cause check
                 if not test_board.check(color=color):
                     cleaned_targets.append(to_square)
                 # Reset for next test
-                test_board.undo_move()
+                move = test_board.load_move(to_square, from_square, validate=False)
+                test_board.push_move(move, store=False)
+                test_board.board[to_square.row][to_square.col] = target
             if len(cleaned_targets) > 0:
                 cleaned[from_square] = cleaned_targets
         return cleaned
@@ -568,14 +580,14 @@ class Board:
         Moves the piece on from_square to to_square.
         NOTE: Does not check for validity.
         """
-        piece = self[from_square]
+        piece = self.board[from_square.row][from_square.col]
         piece.move( to_square,
                     capture=capture,
                     castle=castle,
                     en_passant=en_passant,
                     validate=False)
-        self[to_square] = piece
-        del self[from_square]
+        self.board[to_square.row][to_square.col] = piece
+        self.board[from_square.row][from_square.col] = None
         return
 
     def castle(self, king_from_square, king_to_square):
@@ -584,7 +596,7 @@ class Board:
         NOTE: Does not check for validity.
         """
         # Get King and Rook positions
-        king = self[king_from_square]
+        king = self.board[king_from_square.row][king_from_square.col]
         rook = None
         for test_rook in self.find_pieces(Rook, king.color):
             move_direction = (1, -1)[(king_to_square.col - king_from_square.col < 0)]
@@ -628,8 +640,8 @@ class Board:
                 raise InvalidMoveError("{!r} cannot move to {}!".format(self[from_square], to_square))
 
         # Get pieces
-        piece = self[from_square]
-        target = self[to_square]
+        piece = self.board[from_square.row][from_square.col]
+        target = self.board[to_square.row][to_square.col]
 
         # Determine if capture
         if target is not None:
@@ -659,7 +671,7 @@ class Board:
                      en_passant=en_passant,
                      promote=promote )
 
-    def push_move(self, move_dict):
+    def push_move(self, move_dict, store=True):
         """
         Takes a list of Square pairs for final displacements. Applies the move
         to the board.
@@ -675,19 +687,22 @@ class Board:
             self.promote()
         # Push normal move to board
         else:
-            piece = self[move_dict["from_square"]]
+            from_square = move_dict["from_square"]
+            to_square = move_dict["to_square"]
+            piece = self.board[from_square.row][from_square.col]
             # Move the piece and update the board
-            piece.move(move_dict["to_square"], capture=move_dict["capture"])
-            self[move_dict["to_square"]] = piece
-            del self[move_dict["from_square"]]
+            piece.move(move_dict["to_square"], capture=move_dict["capture"], validate=False)
+            self.board[to_square.row][to_square.col] = piece
+            self.board[from_square.row][from_square.col] = None
         # Update and store game state
-        self.game_history.append(copy.deepcopy(self.board))
+        if store:
+            self.game_history.append(copy.deepcopy(self.board))
         self.to_move = FLIP_COLOR[self.to_move]
 
         # TODO: update halfmoves and fullmoves
         return
 
-    def undo_move(self):
+    def undo_move(self, drop_last=True):
         """
         Restore game state from one turn prior. Deletes the most recent move
         from game_history.
@@ -800,6 +815,7 @@ class Board:
             elif move_input[-1] == "?":
                 # all valid moves
                 if move_input == "?":
+                    print("{} valid moves:\n".format(sum((len(m) for m in self.allowed_moves.values()))))
                     for sq in self.allowed_moves.keys():
                         self.print_square_moves(sq)
                 # valid moves for a piece
@@ -890,7 +906,7 @@ class Board:
             raise ValueError("FEN str does not contain 6 space separated fields!")
 
         # Clear board
-        self.clear_board()
+        self.reset()
 
         # Build board
         for r, row in enumerate(fields[0].split("/")):
@@ -1363,12 +1379,12 @@ def test():
     board = Board("Standard")
     t0 = time.time()
     moves = [ "c2c4", "e7e5",
-                  "b1c3", "g8f6",
-                  "d2d4", "e5d4",
-                  "d1d4", "d7d5",
-                  "c4d5", "d8d5",
-                  "c3d5", "e8d7",
-                  "d5b6",
+              "b1c3", "g8f6",
+              "d2d4", "e5d4",
+              "d1d4", "d7d5",
+              "c4d5", "d8d5",
+              "c3d5", "e8d7",
+              "d5b6",
               ]
     for move in moves:
         board.process_move(move)
@@ -1377,12 +1393,12 @@ def test():
     return
 
 def main():
-    board = Board("PTest")
+    board = Board("Standard")
     board.play_game()
     return
 
 if __name__ == "__main__":
-    if 0:
+    if 1:
         test()
     else:
         main()
