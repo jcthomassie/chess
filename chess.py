@@ -205,10 +205,19 @@ class Board:
         else:
             self.board = board
         # Game trackers
-        self.game_history = [ ]
+        self.move_history = [ ]
+        self.castle_states = { "Q": True,
+                               "K": True,
+                               "q": True,
+                               "k": True, }
+        self.qr_home = { WHITE: Square((N_RANKS, 0)),
+                         BLACK: Square((0, 0)), }
+        self.kr_home = { WHITE: Square((N_RANKS, N_FILES)),
+                         BLACK: Square((0, N_FILES)), }
+        self.en_passant_square = None
+        
         self.to_move = to_move
         self.winner = None
-        self.en_passant_square = None
         self.halfmoves = 0
         self.fullmoves = 1
 
@@ -1135,6 +1144,22 @@ class InvalidMoveError(Exception):
 
 class InvalidBoardError(Exception):
     pass
+
+###############################################################################
+#  MOVES                                                                      #
+###############################################################################
+class Move:
+    """
+    Class for interpreting a move input. Encodes the move in a set of piece
+    displacements and removals.
+    """
+    def __init__(self, from_square, to_square, capture=False, en_passant=None, castle=None):
+        self.from_primary = from_square
+        self.to_primary = to_square
+        self.capture = capture
+        self.en_passant = en_passant
+        self.castle = castle
+        pass
 
 ###############################################################################
 #  PIECES                                                                     #
