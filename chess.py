@@ -707,7 +707,7 @@ class Board:
         # Update and store game state
         if store:
             self.game_history.append(copy.deepcopy(self.board))
-        self.to_move = FLIP_COLOR[self.to_move]
+            self.to_move = FLIP_COLOR[self.to_move]
 
         # TODO: update halfmoves and fullmoves
         return
@@ -1396,10 +1396,16 @@ def test():
               "c3d5", "e8d7",
               "d5b6",
               ]
+    move_counts = []
     for move in moves:
         board.process_move(move)
+        move_counts.append( sum(len(v) for v in board.allowed_moves.values()) )
     t1 = time.time()
-    print("Evaluated {:d} moves in {:f} sec".format(len(moves), t1-t0))
+    print("\nEvaluated {:d} moves in {:f} sec".format(len(moves), t1-t0))
+    print("({:f} sec/position)".format((t1-t0)/len(moves)))
+    correct_move_counts = [ 20, 22, 30, 26, 29, 33, 27, 44, 36, 45, 32, 47, 4 ]
+    if move_counts != correct_move_counts:
+        print("ERROR: Move counts do not match!!!")
     return
 
 def main():
