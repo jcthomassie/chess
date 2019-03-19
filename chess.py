@@ -58,19 +58,19 @@ class Square:
         self.col = col
         self._rank = rank
         self._file = file
-        
+
     @property
     def file(self):
         if self._file is None:
             self._file = self.col_to_file(self.col)
         return self._file
-    
+
     @property
     def rank(self):
         if self._rank is None:
             self._rank = self.row_to_rank(self.row)
         return self._rank
-            
+
     @classmethod
     def from_str(cls, pos_str):
         """
@@ -82,7 +82,7 @@ class Square:
         pos_str = pos_str.upper()
         pos_tup = ( cls.rank_to_row(pos_str[1]), cls.file_to_col(pos_str[0]) )
         return cls(*pos_tup, rank=pos_str[1], file=pos_str[0])
-        
+
     @classmethod
     def from_tup(cls, pos_tup):
         """
@@ -175,6 +175,7 @@ class Board:
         "Pin"      : "R2rk2r/3pbp2/8/8/8/8/4Q3/R3K2R w KQkq - 0 1",
         "Mate"     : "8/8/1Kn5/3k4/4Q3/6N1/8/8 b KQkq - 0 1",
         "Castle"   : "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+        "PTest"    : "1r2qkb1/p5pp/4pp2/B2QQN1N/2R4/PP6/2P5/4K3 b KQkq - 0 1",
             }
 
     def __init__(self, fen="Standard"):
@@ -211,18 +212,18 @@ class Board:
         Inserts a piece at the specified square position.
         board['A1'] = Rook(WHITE, 'A1')
         """
+        if not ( piece is None or isinstance(piece, Piece) ):
+            raise TypeError("Board can only contain Piece and NoneType objects!")
+
         if isinstance(locus, tuple):
-            sq = Square.from_tup(locus)
+            self.board[locus[0]][locus[1]] = piece
+        elif isinstance(locus, Square):
+            self.board[locus.row][locus.col] = piece
         elif isinstance(locus, str):
             sq = Square.from_str(locus)
-        elif isinstance(locus, Square):
-            sq = locus
-        else:
-            raise TypeError("Invalid square locus for board!")
-        if piece is None or isinstance(piece, Piece):
             self.board[sq.row][sq.col] = piece
         else:
-            raise TypeError("Board can only contain Piece and NoneType objects!")
+            raise TypeError("Invalid square locus for board!")
 
     def __getitem__(self, locus):
         """
@@ -231,11 +232,11 @@ class Board:
         """
         if isinstance(locus, tuple):
             piece = self.board[locus[0]][locus[1]]
+        elif isinstance(locus, Square):
+            piece = self.board[locus.row][locus.col]
         elif isinstance(locus, str):
             sq = Square.from_str(locus)
             piece = self.board[sq.row][sq.col]
-        elif isinstance(locus, Square):
-            piece = self.board[locus.row][locus.col]
         else:
             raise TypeError("Invalid square locus for board!")
         return piece
@@ -245,13 +246,7 @@ class Board:
         Removes any piece at the specified board position. Replaces the
         slot with None.
         """
-        if isinstance(locus, tuple):
-            sq = Square.from_tup(locus)
-        elif isinstance(locus, str):
-            sq = Square.from_str(locus)
-        elif isinstance(locus, Square):
-            sq = locus
-        self[sq] = None
+        self[locus] = None
 
     def square_generator(self, reverse=False):
         """
@@ -272,7 +267,7 @@ class Board:
     def square_list(self, reverse=False):
         """
         Get a flat list of all squares on the board. Returns the reverse order
-        if reverse is True. Stores the square_generator into a list one time to 
+        if reverse is True. Stores the square_generator into a list one time to
         remove the need to repeatedly generate squares.
         """
         if self._square_list is None:
@@ -455,8 +450,8 @@ class Board:
 
     def valid_targets_king(self, king):
         """
-        Return a list of all valid target squares for a king. Gets list of 
-        normal king moves, removes moves that leave the king in check, and adds 
+        Return a list of all valid target squares for a king. Gets list of
+        normal king moves, removes moves that leave the king in check, and adds
         valid castling moves.
         """
         moves = [ ]
@@ -574,10 +569,10 @@ class Board:
         NOTE: Does not check for validity.
         """
         piece = self[from_square]
-        piece.move( to_square, 
-                    capture=capture, 
-                    castle=castle, 
-                    en_passant=en_passant, 
+        piece.move( to_square,
+                    capture=capture,
+                    castle=castle,
+                    en_passant=en_passant,
                     validate=False)
         self[to_square] = piece
         del self[from_square]
@@ -794,22 +789,45 @@ class Board:
         actionable = False
         while not actionable:
             move_input = input(">>> ").strip().upper()
+            # DRAW: handle draw offer
             if move_input == "D":
                 print("\n* * * Draw offered ( A - Accept ) * * * ")
                 draw = input(">>> ").strip()
                 if draw.strip().upper() == "A":
                     self.winner = DRAW
                     actionable = True
+            # MOVES: print valid moves
             elif move_input[-1] == "?":
+                # all valid moves
                 if move_input == "?":
                     for sq in self.allowed_moves.keys():
                         self.print_square_moves(sq)
+                # valid moves for a piece
                 elif move_input[1] == "?":
                     ptype = type(Piece.from_str(move_input[0]))
                     for piece in self.find_pieces(ptype, self.to_move):
                         self.print_square_moves(piece.square)
+                # valid moves for a square
                 else:
-                    self.print_square_moves(move_input[:-1])
+                    self.print_square_moves(Square(move_input[:-1]))
+            # PGN format move (kg3)
+            elif len(move_input) == 3:
+                to_str = move_input[1:]
+                to_square = Square.from_str(to_str)
+                ptype = type(Piece.from_str(move_input[0]))
+                piece_list = self.find_pieces(ptype, self.to_move)
+                piece_list = [ self[sq] for sq in self.allowed_moves.keys() if isinstance(self[sq], ptype) ]
+                piece_list = [ p for p in piece_list if to_square in self.allowed_moves[p.square] ]
+                if len(piece_list) == 0:
+                    raise InvalidMoveError("{} has no {}'s that can move to {}".format(COLOR_NAME[self.to_move], ptype.__class__.__name__, to_str))
+                # Handle multiple pieces
+                elif len(piece_list) > 1:
+                    print(piece_list)
+                    from_str = input("Specify: ").strip().upper()
+                else:
+                    from_str = str(piece_list[0].square)
+                move_input = from_str + to_str
+                actionable = True
             else:
                 actionable = True
 
@@ -975,14 +993,20 @@ class Board:
         print("\n")
         print(self.filled_board_str(orient=self.to_move, notate=True, notate_prefix=space))
         print()
-        print(space + "     {} to play!  (Material: {})".format(COLOR_NAME[self.to_move], self.evaluate()))
+        pstr = COLOR_NAME[self.to_move]
+        e = self.evaluate()
+        if e > 0:
+            mstr = "+" + str(e)
+        else:
+            mstr = str(e)
+        print(space + "     {} to play!  (Spread: {})".format(pstr, mstr))
         # Announce check
         if self.check():
             print("\n" + space + "  * * * King is in check! * * *")
         print("_________________________________________________________")
-        print("Enter move: c2c4 ( [R]esign | [D]raw | [U]ndo | [?] )")
+        print("Enter move: ( [R]esign | [D]raw | [U]ndo | [?] )")
         return
-    
+
     @property
     def board_fmt_str(self):
         """
@@ -996,27 +1020,27 @@ class Board:
             for r in range(0, N_RANKS):
                 self._board_fmt_str += piece_line + edge_line
         return self._board_fmt_str
-    
+
     def filled_board_str(self, orient=WHITE, notate=False, notate_prefix="", highlights=[]):
         """
         Populates the empty board format string with the pieces from the
         current board state. If reverse is True, shows perspective from top
         of board. If notate is True, square coordinates are added on the
-        bottom edge and left edge. The notate_prefix string is added at the 
-        front of every line when notation is applied. Highlights is a list of 
+        bottom edge and left edge. The notate_prefix string is added at the
+        front of every line when notation is applied. Highlights is a list of
         squares to be wrapped with parentheses.
         """
         if orient == BLACK:
             reverse = True
         else:
             reverse = False
-        
-        wrapped = ( (self[s], "({})") if s in highlights else (self[s], " {} ") 
+
+        wrapped = ( (self[s], "({})") if s in highlights else (self[s], " {} ")
                         for s in self.square_list(reverse=reverse) )
-        str_gen = ( wrap.format(" ") if p is None else wrap.format(p) 
+        str_gen = ( wrap.format(" ") if p is None else wrap.format(p)
                         for p, wrap in wrapped )
         filled = self.board_fmt_str.format(*str_gen)
-        
+
         if notate:
             if reverse:
                 row_range = range(N_RANKS - 1, -1, -1)
@@ -1041,22 +1065,21 @@ class Board:
             files = " " + " ".join(" {} ".format(l) for l in file_gen)
             filled += notate_prefix + rank_fmt.format(" ") + files
         return filled
-    
-    def print_square_moves(self, pos_str):
+
+    def print_square_moves(self, from_square):
         """
         Print all valid moves from the specified square.
         """
-        sq = Square.from_str(pos_str)
-        piece = self[sq]
+        piece = self[from_square]
         if piece is None:
-            print("{} is empty!".format(sq))
+            print("{} is empty!".format(from_square))
         elif piece.square in self.allowed_moves:
-            print("{!r}: {}".format(piece, self.allowed_moves[sq]))
-            print(self.moves_board_str(sq) + "\n")
+            print("{!r}: {}".format(piece, self.allowed_moves[from_square]))
+            print(self.moves_board_str(from_square) + "\n")
         else:
             print("No valid moves for {!r}!".format(piece))
         return
-        
+
     def moves_board_str(self, from_square, notate_prefix=""):
         """
         Return a mulitline string of the board showing the available moves
@@ -1064,12 +1087,12 @@ class Board:
         """
         # Get list of valid target squares
         targets = [ from_square ]
-        if from_square in self.allowed_moves:    
+        if from_square in self.allowed_moves:
             targets.extend( self.allowed_moves[from_square] )
         # Get the board string
-        return self.filled_board_str( orient=self.to_move, 
-                                      notate=True, 
-                                      highlights=targets, 
+        return self.filled_board_str( orient=self.to_move,
+                                      notate=True,
+                                      highlights=targets,
                                       notate_prefix=notate_prefix )
 
     def __str__(self):
@@ -1345,7 +1368,7 @@ def test():
                   "d1d4", "d7d5",
                   "c4d5", "d8d5",
                   "c3d5", "e8d7",
-                  "d5b6", 
+                  "d5b6",
               ]
     for move in moves:
         board.process_move(move)
@@ -1354,9 +1377,12 @@ def test():
     return
 
 def main():
-    board = Board("Standard")
+    board = Board("PTest")
     board.play_game()
     return
 
 if __name__ == "__main__":
-    main()
+    if 0:
+        test()
+    else:
+        main()
