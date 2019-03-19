@@ -1143,11 +1143,13 @@ class Piece:
     """
     Base class for all chess pieces.
     """
+    # Class constants
+    jumps = False # True for Knights
+    value = None # Material point value
+    
     def __init__(self, locus, color=WHITE):
         # Core attributes
         self.color = color
-        self.jumps = False # True for Knights
-        self.value = None # Material point value
         self.has_moved = False
         # Handle init from coordinate tuple
         if isinstance(locus, tuple):
@@ -1258,10 +1260,10 @@ class Piece:
 
 
 class Pawn(Piece):
+    value = 1
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.value = 1
 
     def move_is_valid(self, d_row, d_col, capture=False, **kwargs):
         """
@@ -1284,10 +1286,10 @@ class Pawn(Piece):
 
 
 class Bishop(Piece):
+    value = 3
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.value = 3
 
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
@@ -1301,11 +1303,11 @@ class Bishop(Piece):
 
 
 class Knight(Piece):
+    value = 3
+    jumps = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.value = 3
-        self.jumps = True
 
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
@@ -1326,10 +1328,10 @@ class Knight(Piece):
 
 
 class Rook(Piece):
+    value = 5
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.value = 5
 
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
@@ -1343,10 +1345,10 @@ class Rook(Piece):
 
 
 class Queen(Piece):
+    value = 9
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.value = 9
 
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
@@ -1360,10 +1362,10 @@ class Queen(Piece):
 
 
 class King(Piece):
+    value = 5
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.value = 5
 
     @staticmethod
     def move_is_valid(d_row, d_col, castle=False, **kwargs):
