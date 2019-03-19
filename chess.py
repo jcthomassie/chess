@@ -45,39 +45,53 @@ class Square:
     Board square representation. Allows flexible conversion between
     string and tuple representations
     """
-    def __init__(self, position):
+    def __init__(self, row, col, rank=None, file=None):
         """
-        Takes a tuple or string of length 2 as input.
+        Takes row and col coordinates as input.
         """
-        # Parse square
-        if isinstance(position, Square):
-            pos_tup = ( position.row, position.col )
-            pos_str = str(position)
-        # Parse string
-        elif isinstance(position, str):
-            if len(position) != 2:
-                raise ValueError("Square position string must be 2 characters!")
-            pos_str = position.upper()
-            pos_tup = ( self.rank_to_row(pos_str[1]), self.file_to_col(pos_str[0]) )
-        # Parse (row, col) tuple
-        elif isinstance(position, tuple):
-            if ( len(position) != 2 or not isinstance(position[0], int)
-                                 or not isinstance(position[1], int) ):
-                raise ValueError("Square position tuple must contain two integers!")
-            pos_tup = position
-            pos_str = self.col_to_file(pos_tup[1]) + self.row_to_rank(pos_tup[0])
-        else:
-            raise TypeError("Square position must be a string or tuple!")
         # Check if in bounds
-        if not pos_tup[0] in range(0, N_RANKS):
+        if not row in range(0, N_RANKS):
             raise IndexError("Rank out of bounds!")
-        if not pos_tup[1] in range(0, N_FILES):
+        if not col in range(0, N_FILES):
             raise IndexError("File out of bounds!")
-        self.row = pos_tup[0]
-        self.col = pos_tup[1]
-        self.file = pos_str[0]
-        self.rank = pos_str[1]
-        return
+        self.row = row
+        self.col = col
+        self._rank = rank
+        self._file = file
+        
+    @property
+    def file(self):
+        if self._file is None:
+            self._file = self.col_to_file(self.col)
+        return self._file
+    
+    @property
+    def rank(self):
+        if self._rank is None:
+            self._rank = self.row_to_rank(self.row)
+        return self._rank
+            
+    @classmethod
+    def from_str(cls, pos_str):
+        """
+        Initializes a Square from a position string.
+        A8 -> Square(0, 0)
+        """
+        if len(pos_str) != 2:
+            raise ValueError("Square position string must be 2 characters!")
+        pos_str = pos_str.upper()
+        pos_tup = ( cls.rank_to_row(pos_str[1]), cls.file_to_col(pos_str[0]) )
+        return cls(*pos_tup, rank=pos_str[1], file=pos_str[0])
+        
+    @classmethod
+    def from_tup(cls, pos_tup):
+        """
+        Initializes a Square from a position tuple.
+        """
+        if ( len(pos_tup) != 2 or not isinstance(pos_tup[0], int)
+                               or not isinstance(pos_tup[1], int) ):
+                raise ValueError("Square position tuple must contain two integers!")
+        return cls(*pos_tup)
 
     @staticmethod
     def file_to_col(file):
@@ -165,6 +179,7 @@ class Board:
 
     def __init__(self, fen="Standard"):
         self._board_fmt_str = None
+        self._square_list = None
         if fen is None:
             self.clear_board()
         else:
@@ -191,32 +206,52 @@ class Board:
         self._last_recompute = 0
         return
 
-    def __setitem__(self, position, piece):
+    def __setitem__(self, locus, piece):
         """
         Inserts a piece at the specified square position.
         board['A1'] = Rook(WHITE, 'A1')
         """
-        sq = Square(position)
+        if isinstance(locus, tuple):
+            sq = Square.from_tup(locus)
+        elif isinstance(locus, str):
+            sq = Square.from_str(locus)
+        elif isinstance(locus, Square):
+            sq = locus
+        else:
+            raise TypeError("Invalid square locus for board!")
         if piece is None or isinstance(piece, Piece):
             self.board[sq.row][sq.col] = piece
         else:
             raise TypeError("Board can only contain Piece and NoneType objects!")
 
-    def __getitem__(self, position):
+    def __getitem__(self, locus):
         """
         Gets the piece on the specified square position (None for empty square).
         board['A1'] -> Rook(White, A1)
         """
-        sq = Square(position)
-        piece = self.board[sq.row][sq.col]
+        if isinstance(locus, tuple):
+            piece = self.board[locus[0]][locus[1]]
+        elif isinstance(locus, str):
+            sq = Square.from_str(locus)
+            piece = self.board[sq.row][sq.col]
+        elif isinstance(locus, Square):
+            piece = self.board[locus.row][locus.col]
+        else:
+            raise TypeError("Invalid square locus for board!")
         return piece
 
-    def __delitem__(self, position):
+    def __delitem__(self, locus):
         """
         Removes any piece at the specified board position. Replaces the
         slot with None.
         """
-        self[position] = None
+        if isinstance(locus, tuple):
+            sq = Square.from_tup(locus)
+        elif isinstance(locus, str):
+            sq = Square.from_str(locus)
+        elif isinstance(locus, Square):
+            sq = locus
+        self[sq] = None
 
     def square_generator(self, reverse=False):
         """
@@ -232,7 +267,20 @@ class Board:
             col_iter = range(0, N_FILES)
         for row in row_iter:
             for col in col_iter:
-                yield Square((row, col))
+                yield Square(row, col)
+
+    def square_list(self, reverse=False):
+        """
+        Get a flat list of all squares on the board. Returns the reverse order
+        if reverse is True. Stores the square_generator into a list one time to 
+        remove the need to repeatedly generate squares.
+        """
+        if self._square_list is None:
+            self._square_list = list(self.square_generator())
+        if reverse:
+            return reversed(self._square_list)
+        else:
+            return self._square_list
 
     def piece_generator(self, color=None):
         """
@@ -259,8 +307,6 @@ class Board:
         from_square to_square, inclusive. Only works for square/diagonal
         displacements
         """
-        from_square = Square(from_square)
-        to_square = Square(to_square)
         d_row, d_col = to_square - from_square
         squares = [ ]
         # DIAGONAL MOVE
@@ -270,19 +316,19 @@ class Board:
             r_to_c = r_unit * c_unit # 1 if same, -1 if opposite
             for r in range(0, d_row + r_unit, r_unit):
                 pos_tup = (from_square.row + r, from_square.col + r * r_to_c)
-                squares.append(Square(pos_tup))
+                squares.append(Square(*pos_tup))
         # VERTICAL MOVE
         elif d_col == 0:
             r_unit = (1, -1)[d_row < 0] # get sign of row change
             for r in range(0, d_row + r_unit, r_unit):
                 pos_tup = (from_square.row + r, from_square.col)
-                squares.append(Square(pos_tup))
+                squares.append(Square(*pos_tup))
         # HORIZONTAL MOVE
         elif d_row == 0:
             c_unit = (1, -1)[d_col < 0] # get sign of col change
             for c in range(0, d_col + c_unit, c_unit):
                 pos_tup = (from_square.row, from_square.col + c)
-                squares.append(Square(pos_tup))
+                squares.append(Square(*pos_tup))
         else:
             raise IndexError("Slices must be square or diagonal!")
 
@@ -430,7 +476,7 @@ class Board:
         does not consider castling, does not consider en passant.
         """
         moves = [ ]
-        for square in self.square_generator():
+        for square in self.square_list():
             if square == piece.square:
                 continue
             target = self[square]
@@ -669,8 +715,8 @@ class Board:
         if the move fails.
         """
         try:
-            from_square = Square(move_str[:2])
-            to_square = Square(move_str[2:].strip())
+            from_square = Square.from_str(move_str[:2])
+            to_square = Square.from_str(move_str[2:].strip())
         except:
             raise InvalidMoveError("Could not parse move!")
         # Make move
@@ -966,7 +1012,7 @@ class Board:
             reverse = False
         
         wrapped = ( (self[s], "({})") if s in highlights else (self[s], " {} ") 
-                        for s in self.square_generator(reverse=reverse) )
+                        for s in self.square_list(reverse=reverse) )
         str_gen = ( wrap.format(" ") if p is None else wrap.format(p) 
                         for p, wrap in wrapped )
         filled = self.board_fmt_str.format(*str_gen)
@@ -1000,7 +1046,7 @@ class Board:
         """
         Print all valid moves from the specified square.
         """
-        sq = Square(pos_str)
+        sq = Square.from_str(pos_str)
         piece = self[sq]
         if piece is None:
             print("{} is empty!".format(sq))
@@ -1054,17 +1100,20 @@ class Piece:
         self.jumps = False # True for Knights
         self.value = None # Material point value
         self.has_moved = False
+        # Handle init from coordinate tuple
+        if isinstance(locus, tuple):
+            self.square = Square.from_tup(locus)
+        # Handle init from coordinate string
+        elif isinstance(locus, str):
+            self.square = Square.from_str(locus)
         # Handle init from Pawn promotion
-        if isinstance(locus, Pawn):
+        elif isinstance(locus, Pawn):
             self.color = locus.color
             self.square = locus.square
             self.has_moved = True
         # Handle init from Square
         elif isinstance(locus, Square):
             self.square = locus
-        # Handle init from coordinate string/tuple
-        else:
-            self.square = Square(locus)
 
     @staticmethod
     def from_str(piece_char, row=0, col=0):
@@ -1287,9 +1336,27 @@ class King(Piece):
 ###############################################################################
 #  MAIN                                                                       #
 ###############################################################################
+def test():
+    board = Board("Standard")
+    t0 = time.time()
+    moves = [ "c2c4", "e7e5",
+                  "b1c3", "g8f6",
+                  "d2d4", "e5d4",
+                  "d1d4", "d7d5",
+                  "c4d5", "d8d5",
+                  "c3d5", "e8d7",
+                  "d5b6", 
+              ]
+    for move in moves:
+        board.process_move(move)
+    t1 = time.time()
+    print("Evaluated {:d} moves in {:f} sec".format(len(moves), t1-t0))
+    return
+
 def main():
     board = Board("Standard")
     board.play_game()
+    return
 
 if __name__ == "__main__":
     main()
