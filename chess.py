@@ -256,6 +256,14 @@ class Board:
         slot with None.
         """
         self[locus] = None
+        return
+
+    def add_piece(self, piece, color, square):
+        """
+        Creates piece of color on square and adds it to the board.
+        """
+        self[square] = piece(square, color=color)
+        return
 
     def square_generator(self, reverse=False):
         """
@@ -279,12 +287,21 @@ class Board:
         if reverse is True. Stores the square_generator into a list one time to
         remove the need to repeatedly generate squares.
         """
+        # Construct list if it does not yet exist
         if self._square_list is None:
             self._square_list = list(self.square_generator())
+        # Return list in specified order
         if reverse:
             return reversed(self._square_list)
         else:
             return self._square_list
+        
+    def get_square(self, row, col):
+        """
+        Efficiently get the square at specified row, col.
+        """
+        square_index = N_RANKS * row + col
+        return self.square_list()[square_index]
 
     def piece_generator(self, color=None):
         """
@@ -297,54 +314,42 @@ class Board:
                     continue
                 elif color is None or piece.color == color:
                     yield piece
-
-    def add_piece(self, piece, color, square):
-        """
-        Creates piece of color on square and adds it to the board.
-        """
-        self[square] = piece(square, color=color)
-        return
-
+    
     def square_slice(self, from_square, to_square):
         """
-        Slices out a list representation of the squares on the board
-        from_square to_square, inclusive. Only works for square/diagonal
-        displacements
+        Generator that yields the squares on the board between from_square and 
+        to_square, inclusive. Only works for square/diagonal displacements.
         """
         d_row, d_col = to_square - from_square
-        squares = [ ]
-        # DIAGONAL MOVE
-        if abs(d_row) == abs(d_col):
-            r_unit = (1, -1)[d_row < 0] # get sign of row change
-            c_unit = (1, -1)[d_col < 0] # get sign of col change
-            r_to_c = r_unit * c_unit # 1 if same, -1 if opposite
-            for r in range(0, d_row + r_unit, r_unit):
-                pos_tup = (from_square.row + r, from_square.col + r * r_to_c)
-                squares.append(Square(*pos_tup))
-        # VERTICAL MOVE
-        elif d_col == 0:
-            r_unit = (1, -1)[d_row < 0] # get sign of row change
-            for r in range(0, d_row + r_unit, r_unit):
-                pos_tup = (from_square.row + r, from_square.col)
-                squares.append(Square(*pos_tup))
-        # HORIZONTAL MOVE
+        # VERTICAL
+        if d_col == 0:
+            dr = (1, -1)[to_square.row < from_square.row] # sign of row change
+            for row in range(from_square.row, to_square.row + dr, dr):
+                yield self.get_square(row, from_square.col)
+        # HORIZONTAL
         elif d_row == 0:
-            c_unit = (1, -1)[d_col < 0] # get sign of col change
-            for c in range(0, d_col + c_unit, c_unit):
-                pos_tup = (from_square.row, from_square.col + c)
-                squares.append(Square(*pos_tup))
+            dc = (1, -1)[to_square.col < from_square.col] # sign of col change
+            for col in range(from_square.col, to_square.col + dc, dc):
+                yield self.get_square(from_square.row, col) 
+        # DIAGONAL
+        elif abs( d_row ) == abs( d_col ):
+            dr = (1, -1)[d_row < 0] # sign of row change
+            dc = (1, -1)[d_col < 0] # sign of col change
+            r_to_c = dr * dc # 1 if same, -1 if opposite
+            for r in range(0, d_row + dr, dr):
+                row = from_square.row + r
+                col = from_square.col + r * r_to_c
+                yield self.get_square(row, col)
         else:
             raise IndexError("Slices must be square or diagonal!")
 
-        return squares
-
     def piece_slice(self, from_square, to_square):
         """
-        Slices out a list representation of the board from_square to_square,
+        Generator that yields pieces on the board from_square to_square,
         inclusive. Only works for square/diagonal displacements.
         """
-        squares = self.square_slice(from_square, to_square)
-        return [ self.board[s.row][s.col] for s in squares ]
+        for square in self.square_slice(from_square, to_square):
+            yield self.board[square.row][square.col]
 
     def find_pieces(self, piece_type, color):
         """
@@ -361,7 +366,7 @@ class Board:
         Return True if there is a piece between the two squares.
         Return False if the path is clear.
         """
-        pieces = self.piece_slice(from_square, to_square)[1:-1]
+        pieces = list(self.piece_slice(from_square, to_square))[1:-1]
         if any(pieces):
             return True
         return False
@@ -373,9 +378,7 @@ class Board:
         """
         attackers = [ ]
         for piece in self.piece_generator(color=color):
-            threats = self.valid_targets_piece(piece, recaptures=True)
-
-            if square in threats:
+            if self.valid_square_piece(piece, square, recaptures=True):
                 attackers.append(piece)
 
         return attackers
@@ -401,7 +404,7 @@ class Board:
         """
         pinned = [ ]
         for pinner in self.get_pinners(square, FLIP_COLOR[color]):
-            path = self.piece_slice(pinner.square, square)[1:-1]
+            path = list(self.piece_slice(pinner.square, square))[1:-1]
             piece = [p for p in path if p is not None][0]
             pinned.append(piece)
         return pinned
@@ -419,7 +422,7 @@ class Board:
             return False
 
         # Make sure king doesn't cross through check (include current square)
-        path = self.square_slice(king.square, rook.square)[:3]
+        path = list(self.square_slice(king.square, rook.square))[:3]
         for square in path:
             if len(self.get_attackers(square, FLIP_COLOR[king.color])) > 0:
                 return False
@@ -438,7 +441,7 @@ class Board:
         moves = [ ]
         for rook in self.find_pieces(Rook, king.color):
             if self.can_castle(king, rook):
-                moves.append(self.square_slice(king.square, rook.square)[2])
+                moves.append(list(self.square_slice(king.square, rook.square))[2])
         return moves
 
     def valid_en_passants(self):
@@ -472,6 +475,46 @@ class Board:
         # Add castling moves
         moves.extend(self.valid_castles(king=king))
         return moves
+    
+    def valid_square_piece(self, piece, square, recaptures=False, unpins_only=False):
+        """
+        Return True if piece can move to square.
+        Return False otherwise.
+        If recaptures is True, includes squares that are occupied by a piece
+        of the same color.
+        """
+        if square == piece.square:
+            return False
+        target = self.board[square.row][square.col]
+        if target is None:
+            # EMPTY case
+            capture = False
+        elif target.color != piece.color:
+            # CAPTURE case
+            capture = True
+        elif recaptures:
+            # RECAPTURE case
+            capture = True
+        else:
+            return False
+        # Check if move is valid for piece
+        d_row, d_col = square - piece.square
+        if not piece.move_is_valid(d_row, d_col, capture=capture):
+            return False
+        # Only keep moves opened by an opponents move
+        if unpins_only:
+            if piece.jumps:
+                return False
+            path = list(self.piece_slice(piece.square, square))[1:-1]
+            blockers = [ p for p in path if p is not None]
+            # Piece must be blocked by exactly one piece of the opposite color
+            if len(blockers) != 1 or blockers[0].color == piece.color:
+                return False
+        # Keep moves without obstructions
+        elif not piece.jumps:
+            if self.obstruction(piece.square, square):
+                return False
+        return True
 
     def valid_targets_piece(self, piece, recaptures=False, unpins_only=False):
         """
@@ -481,41 +524,8 @@ class Board:
         """
         moves = [ ]
         for square in self.square_list():
-            if square == piece.square:
-                continue
-            target = self.board[square.row][square.col]
-            if target is None:
-                # EMPTY case
-                capture = False
-            elif target.color != piece.color:
-                # CAPTURE case
-                capture = True
-            elif recaptures:
-                # RECAPTURE case
-                capture = True
-            else:
-                continue
-            # Check if move is valid for piece
-            d_row, d_col = square - piece.square
-            if not piece.move_is_valid(d_row, d_col, capture=capture):
-                continue
-
-            # Only keep moves opened by an opponents move
-            if unpins_only:
-                if piece.jumps:
-                    continue
-                path = self.piece_slice(piece.square, square)[1:-1]
-                blockers = [ p for p in path if p is not None]
-                # Piece must be blocked by exactly one piece of the opposite color
-                if len(blockers) != 1 or blockers[0].color == piece.color:
-                    continue
-            # Keep moves without obstructions
-            elif not piece.jumps:
-                if self.obstruction(piece.square, square):
-                    continue
-
-            moves.append(square)
-
+            if self.valid_square_piece(piece, square, recaptures=recaptures, unpins_only=unpins_only):
+                moves.append(square)
         return moves
 
     def valid_moves_all(self, remove_checks=True):
@@ -606,7 +616,7 @@ class Board:
         if rook is None:
             raise InvalidMoveError("Could not process castle move!")
         rook_from_square = rook.square
-        rook_to_square = self.square_slice(king_from_square, king_to_square)[1]
+        rook_to_square = list(self.square_slice(king_from_square, king_to_square))[1]
         # Move the pieces
         self.move_piece(king_from_square, king_to_square, castle=True)
         self.move_piece(rook_from_square, rook_to_square)
