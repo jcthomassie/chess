@@ -5,6 +5,7 @@ Created on Fri Mar  8 09:57:04 2019
 @author: jthom
 """
 import time
+import textwrap
 
 ###############################################################################
 #  GLOBALS                                                                    #
@@ -129,7 +130,7 @@ class Square:
         if not isinstance(rank, str):
             raise TypeError("Rank must be a string!")
         if not rank.isdigit():
-            raise ValueError("File must be a digit string!")
+            raise ValueError("Rank must be a digit string!")
         return ord(RANK_ZERO) - ord(rank)
 
     @staticmethod
@@ -212,7 +213,7 @@ class Board:
         self.kr_home = { WHITE: Square(N_RANKS - 1, N_FILES - 1),
                          BLACK: Square(0, N_FILES - 1), }
         self.en_passant_square = None
-        
+
         self.to_move = to_move
         self.winner = None
         self.halfmoves = 0
@@ -301,7 +302,7 @@ class Board:
             return reversed(self._square_list)
         else:
             return self._square_list
-        
+
     def get_square(self, row, col):
         """
         Efficiently get the square at specified row, col.
@@ -320,10 +321,10 @@ class Board:
                     continue
                 elif color is None or piece.color == color:
                     yield piece
-    
+
     def square_slice(self, from_square, to_square):
         """
-        Generator that yields the squares on the board between from_square and 
+        Generator that yields the squares on the board between from_square and
         to_square, inclusive. Only works for square/diagonal displacements.
         """
         d_row, d_col = to_square - from_square
@@ -336,7 +337,7 @@ class Board:
         elif d_row == 0:
             dc = (1, -1)[to_square.col < from_square.col] # sign of col change
             for col in range(from_square.col, to_square.col + dc, dc):
-                yield self.get_square(from_square.row, col) 
+                yield self.get_square(from_square.row, col)
         # DIAGONAL
         elif abs( d_row ) == abs( d_col ):
             dr = (1, -1)[d_row < 0] # sign of row change
@@ -440,17 +441,17 @@ class Board:
             raise TypeError("valid_castles king must be a King or None!")
         # Build list of castle moves
         moves = [ ]
-        qrook = self.qr_home[king.color]
+        qrook = self[ self.qr_home[king.color] ]
         if isinstance(qrook, Rook):
             if self.castle_states[king.color]["Q"]:
                 if self.verify_castle(king, qrook):
                     moves.append(Square(king.row, king.col - 2))
-        krook = self.kr_home[king.color]
+        krook = self[ self.kr_home[king.color] ]
         if isinstance(krook, Rook):
             if self.castle_states[king.color]["K"]:
                 if self.verify_castle(king, krook):
                     moves.append(Square(king.row, king.col + 2))
-                
+
         return moves
 
     def valid_targets_king(self, king):
@@ -468,7 +469,7 @@ class Board:
         # Add castling moves
         moves.extend(self.valid_castles(king=king))
         return moves
-    
+
     def valid_square_piece(self, piece, square, recaptures=False, unpins_only=False):
         """
         Return True if piece can move to square.
@@ -548,7 +549,7 @@ class Board:
             cleaned_targets = [ ]
             for to_square in targets:
                 # Try the move on the test_board
-                move = Move.from_squares(from_square, to_square, self)
+                move = Move.from_squares(from_square, to_square, self, validate=False)
                 self.push_move(move)
                 # Keep the move if it does not cause check
                 if not self.check(color=color):
@@ -570,20 +571,6 @@ class Board:
             self._allowed_moves = self.valid_moves_all()
             self._last_recompute = len(self.move_history)
         return self._allowed_moves
-
-    def load_move(self, from_square, to_square, validate=True):
-        """
-        Takes from_square and to_square for move command. Attempts to process
-        the move into a move dictionary. Returns the dictionary.
-        """
-        # Check that move is valid
-        if validate:
-            if not from_square in self.allowed_moves.keys():
-                raise InvalidMoveError("{} cannot move!".format(from_square))
-            if not to_square in self.allowed_moves[from_square]:
-                raise InvalidMoveError("{!r} cannot move to {}!".format(self[from_square], to_square))
-
-        return Move.from_squares(from_square, to_square, self)
 
     def push_move(self, move):
         """
@@ -611,7 +598,7 @@ class Board:
         """
         if len(self.move_history) == 0:
             raise InvalidMoveError("There are no moves to undo!")
-            
+
         last_move = self.move_history.pop()
         # Revert additions
         for piece in last_move.additions:
@@ -629,23 +616,18 @@ class Board:
             self.en_passant_square = self.move_history[-1].en_passant_square
         else:
             self.en_passant_square = None
-        
+
         # TODO: update halfmoves and fullmoves
         return
 
-    def process_move(self, move_str):
+    def process_move(self, move_str, validate=True):
         """
         Takes a move string as input. Trys to make the move, raises an error
         if the move fails.
         """
-        try:
-            from_square = Square.from_str(move_str[:2])
-            to_square = Square.from_str(move_str[2:].strip())
-        except:
-            raise InvalidMoveError("Could not parse move!")
-        # Make move
         t0 = time.time()
-        self.push_move(self.load_move(from_square, to_square))
+        # Parse and push the move
+        self.push_move(Move.from_pgn(move_str, self, validate=validate))
         print("Move succeeded!")
         print("Now {} valid moves".format(sum(len(v) for v in self.allowed_moves.values())))
         t1 = time.time()
@@ -717,9 +699,9 @@ class Board:
         """
         actionable = False
         while not actionable:
-            move_input = input(">>> ").strip().upper()
+            move_input = input(">>> ").strip()
             # DRAW: handle draw offer
-            if move_input == "D":
+            if move_input.upper() == "D":
                 print("\n* * * Draw offered ( A - Accept ) * * * ")
                 draw = input(">>> ").strip()
                 if draw.strip().upper() == "A":
@@ -743,10 +725,10 @@ class Board:
             else:
                 actionable = True
 
-        if move_input == "R":
+        if move_input.upper() == "R":
             # Set winner to opponent
             self.winner = FLIP_COLOR[self.to_move]
-        elif move_input == "U":
+        elif move_input.upper() == "U":
             self.undo_move()
         else:
             self.process_move(move_input)
@@ -1034,22 +1016,27 @@ class Move:
         self.castle_bans = castle_bans # list of K, Q
         self.en_passant_square = en_passant_square # en passant square
         return
-    
+
     @classmethod
-    def from_squares(cls, from_square, to_square, board, promote_type=None):
+    def from_squares(cls, from_square, to_square, board, promote_type=None, validate=True):
         """
         Takes a from_square, to_square and board object. Determines what
         actions are occuring as a result of the displacement. If promote_type
         is specified, the piece at from_square is dropped and a piece of
         the promote_type is added at the to_square.
-        
-        NOTE: Does not check for validity!
         """
+        # Check that move is valid
+        if validate:
+            if not from_square in board.allowed_moves.keys():
+                raise InvalidMoveError("{} cannot move!".format(from_square))
+            if not to_square in board.allowed_moves[from_square]:
+                raise InvalidMoveError("{!r} cannot move to {}!".format(board[from_square], to_square))
+
         additions = [ ]
         removals = [ ]
         castle_bans = [ ]
         en_passant_square = None
-        
+
         # Get pieces
         piece = board.board[from_square.row][from_square.col]
         target = board.board[to_square.row][to_square.col]
@@ -1070,7 +1057,7 @@ class Move:
         if to_square == board.en_passant_square:
             d_row = COLOR_ORIENTATION[piece.color]
             removals.append(board.board[to_square.row - d_row][to_square.col])
-            
+
         # Determine if opens en passant square
         if isinstance(piece, Pawn):
             d_row = to_square.row - from_square.row
@@ -1102,30 +1089,80 @@ class Move:
                 castle_bans.append("K")
         # Only keep castle bans that are currently allowed
         castle_bans = [ b for b in castle_bans if board.castle_states[piece.color][b] ]
-        
-        return cls( additions, 
-                    removals, 
-                    castle_bans=castle_bans, 
+
+        return cls( additions,
+                    removals,
+                    castle_bans=castle_bans,
                     en_passant_square=en_passant_square )
 
-    @classmethod
-    def from_PGN(cls, pgn_str, board):
+    @staticmethod
+    def parse_pgn(pgn_str, board):
         """
         Parses a PGN formatted move string into a move.
-        Example: kg3
-        """ 
-        to_str = pgn_str[1:]
-        to_square = Square.from_str(to_str)
-        
-        ptype = type(Piece.from_str(pgn_str[0]))
-        piece_list = board.find_pieces(ptype, board.to_move)
-        piece_list = [ p for p in piece_list if p.square in board.allowed_moves and to_square in board.allowed_moves[p.square] ]
+        Examples: Kg3, axd4, Ndxe2, Rad1
+        """
+        pgn_str = pgn_str.rstrip("+")
+        promote_type = None
+        # Handle CASTLES
+        if pgn_str.upper() in ( "O-O", "O-O-O" ):
+            from_square = board.find_king().square
+            if len(pgn_str) == 3:
+                to_square = Square(from_square.row, from_square.col + 2)
+            else:
+                to_square = Square(from_square.row, from_square.col - 2)
+            return from_square, to_square, promote_type
+
+        # Handle PROMOTIONS
+        if pgn_str[-1].isalpha():
+            promote_type = type(Piece.from_str(pgn_str[-1]))
+            pgn_str = pgn_str[:-1]
+        else:
+            promote_type = None
+
+        # Handle piece type
+        if pgn_str[0] == pgn_str[0].upper():
+            ptype = type(Piece.from_str(pgn_str[0]))
+            pgn_str = pgn_str[1:]
+        else:
+            ptype = Pawn
+
+        # Get to square
+        to_square = Square.from_str(pgn_str[-2:])
+        pgn_str = pgn_str[:-2].rstrip("x")
+
+        # Get list of possible pieces
+        piece_list = [ p for p in board.find_pieces(ptype, board.to_move)
+                          if p.square in board.allowed_moves
+                              and to_square in board.allowed_moves[p.square] ]
+        # Filter using PGN specs
+        if len(piece_list) > 1:
+            if len(pgn_str) == 1:
+                file = pgn_str.upper()
+                piece_list = [ p for p in piece_list if p.file == file ]
+            else:
+                sq = Square.from_str(pgn_str)
+                piece_list = [ p for p in piece_list if p.square == sq ]
+
+        # Ensure only one piece works
         if len(piece_list) == 0:
-            raise InvalidMoveError("{} has no {}'s that can move to {}".format(COLOR_NAME[board.to_move], ptype.__class__.__name__, to_str))
+            raise InvalidMoveError(
+                    "{} has no {}s that can move to {}".format(
+                    COLOR_NAME[board.to_move], ptype.__name__, to_square) )
         elif len(piece_list) > 1:
             raise InvalidMoveError("{} pieces can move to {}")
-        pass
-    
+
+        piece = piece_list[0]
+        return piece.square, to_square, promote_type
+
+    @classmethod
+    def from_pgn(cls, pgn_str, board, validate=True):
+        from_square, to_square, promote_type = cls.parse_pgn(pgn_str, board)
+        return cls.from_squares( from_square,
+                                 to_square,
+                                 board,
+                                 promote_type=promote_type,
+                                 validate=validate )
+
     @classmethod
     def from_square_str(cls, square_str, board):
         """
@@ -1137,10 +1174,10 @@ class Move:
             promote_type = type(Piece.from_str(square_str[-1]))
         elif len(square_str) != 4:
             raise InvalidMoveError("Move string must be 4 characters (5 for pawn promotions)!")
-        
+
         from_square = Square.from_str(square_str[:2])
         to_square = Square.from_str(square_str[2:4])
-        
+
         return cls.from_squares(from_square, to_square, board, promote_type)
 
 ###############################################################################
@@ -1153,7 +1190,7 @@ class Piece:
     # Class constants
     jumps = False # True for Knights
     value = None # Material point value
-    
+
     def __init__(self, locus, color=WHITE, has_moved=False):
         # Core attributes
         self.color = color
@@ -1377,16 +1414,17 @@ class King(Piece):
 #  MAIN                                                                       #
 ###############################################################################
 def test():
+    game = """
+    e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O h3 Nb8 d4 Nbd7 c4
+    c6 cxb5 axb5 Nc3 Bb7 Bg5 b4 Nb1 h6 Bh4 c5 dxe5 Nxe4 Bxe7 Qxe7 exd6 Qf6 Nbd2
+    Nxd6 Nc4 Nxc4 Bxc4 Nb6 Ne5 Rae8 Bxf7+ Rxf7 Nxf7 Rxe1+ Qxe1 Kxf7 Qe3 Qg5
+    Qxg5 hxg5 b3 Ke6 a3 Kd6 axb4 cxb4 Ra5 Nd5 f3 Bc8 Kf2 Bf5 Ra7 g6 Ra6+ Kc5
+    Ke1 Nf4 g3 Nxh3 Kd2 Kb5 Rd6 Kc5 Ra6 Nf2 g4 Bd3 Re6
+    """
+    moves = textwrap.dedent(game).strip().split()
+
     board = Board("Standard")
     t0 = time.time()
-    moves = [ "c2c4", "e7e5",
-              "b1c3", "g8f6",
-              "d2d4", "e5d4",
-              "d1d4", "d7d5",
-              "c4d5", "d8d5",
-              "c3d5", "e8d7",
-              "d5b6",
-              ]
     move_counts = []
     for move in moves:
         board.process_move(move)
@@ -1394,9 +1432,6 @@ def test():
     t1 = time.time()
     print("\nEvaluated {:d} moves in {:f} sec".format(len(moves), t1-t0))
     print("({:f} sec/position)".format((t1-t0)/len(moves)))
-    correct_move_counts = [ 20, 22, 30, 26, 29, 33, 27, 44, 36, 45, 32, 47, 4 ]
-    if move_counts != correct_move_counts:
-        print("ERROR: Move counts do not match!!!")
     return
 
 def main():
@@ -1405,7 +1440,7 @@ def main():
     return
 
 if __name__ == "__main__":
-    if 0:
+    if 1:
         test()
     else:
         main()
