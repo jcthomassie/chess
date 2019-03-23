@@ -5,7 +5,6 @@ Created on Fri Mar  8 09:57:04 2019
 @author: jthom
 """
 import time
-import textwrap
 
 ###############################################################################
 #  GLOBALS                                                                    #
@@ -490,7 +489,7 @@ class Board:
             return False
         # Check if move is valid for piece
         d_row, d_col = square - piece.square
-        if not piece.move_is_valid(d_row, d_col, capture=capture):
+        if not piece.move_is_valid(d_row, d_col, capture=(capture or recaptures)):
             return False
         # Only keep moves opened by an opponents move
         if unpins_only:
@@ -585,7 +584,7 @@ class Board:
         # Update and store game state
         self.move_history.append(move)
         for side in move.castle_bans:
-            self.castle_states[self.to_move][side] == False
+            self.castle_states[self.to_move][side] = False
         self.en_passant_square = move.en_passant_square
         self.to_move = FLIP_COLOR[self.to_move]
         # TODO: update halfmoves and fullmoves
@@ -610,7 +609,7 @@ class Board:
         self.to_move = FLIP_COLOR[self.to_move]
         # Revert castle bans
         for side in last_move.castle_bans:
-            self.castle_states[self.to_move][side] == True
+            self.castle_states[self.to_move][side] = True
         # Get previous en passant
         if len(self.move_history) > 0:
             self.en_passant_square = self.move_history[-1].en_passant_square
@@ -765,6 +764,19 @@ class Board:
         print("    * * * * * * * * * *\n")
         return
 
+    def load_pgn(self, pgn_str):
+        """
+        Parses a PGN formatted string representation of a chess game into the
+        current board.
+        """
+        if not isinstance(pgn_str, str):
+            raise TypeError("Input must be a PGN string!")
+        pgn_str = pgn_str.replace(",", " ")
+        moves = pgn_str.split()
+        for move in moves:
+            self.process_move(move)
+        return
+
     def load_fen(self, fen_str):
         """
         Parses a FEN formatted string representation of a chess board into
@@ -843,7 +855,8 @@ class Board:
                 elif skips != 0:
                     row_str += str(skips)
                     skips = 0
-                else:
+
+                if skips == 0:
                     row_str += str(piece)
             else:
                 # Handle empty rows
@@ -986,6 +999,12 @@ class Board:
                                       highlights=targets,
                                       notate_prefix=notate_prefix )
 
+    def pgn_str(self):
+        """
+        Return a string of all stored moves for the game in PGN format.
+        """
+        return " ".join([ m.pgn_str() for m in self.move_history ])
+
     def __str__(self):
         """
         Return a mulitline string of the current board.
@@ -1094,6 +1113,26 @@ class Move:
                     removals,
                     castle_bans=castle_bans,
                     en_passant_square=en_passant_square )
+
+    def pgn_str(self):
+        """
+        Returns PGN string representation of the move.
+        """
+        piece_0 = self.removals[0]
+        piece_1 = self.additions[0]
+        end = str(piece_1.square).lower()
+        if type(piece_0) == Pawn:
+            start = piece_0.file.lower()
+            if type(piece_1) != Pawn:
+                end += str(piece_1).upper()
+        else:
+            start = str(piece_0).upper()
+            start += str(piece_0.square).lower()
+
+        if len(self.removals) > 1:
+            start += "x"
+
+        return start + end
 
     @staticmethod
     def parse_pgn(pgn_str, board):
@@ -1322,7 +1361,7 @@ class Bishop(Piece):
         """
         Rank and file must change by same amount
         """
-        if ( abs(d_col) == abs(d_row) ):
+        if abs(d_col) == abs(d_row):
             return True
         else:
             return False
@@ -1340,7 +1379,7 @@ class Knight(Piece):
         """
         Rank or file must change by 2, the other must change by 1
         """
-        if sorted([abs(d_col), abs(d_row)]) == [1, 2]:
+        if set(( abs(d_col), abs(d_row) )) == set(( 1, 2 )):
             return True
         else:
             return False
@@ -1405,7 +1444,7 @@ class King(Piece):
                 return False
 
         else:
-            if sorted([abs(d_col), abs(d_row)]) in ([1, 1], [0, 1]):
+            if set(( abs(d_col), abs(d_row) )).issubset( set(( 0, 1 )) ):
                 return True
             else:
                 return False
@@ -1421,17 +1460,15 @@ def test():
     Qxg5 hxg5 b3 Ke6 a3 Kd6 axb4 cxb4 Ra5 Nd5 f3 Bc8 Kf2 Bf5 Ra7 g6 Ra6+ Kc5
     Ke1 Nf4 g3 Nxh3 Kd2 Kb5 Rd6 Kc5 Ra6 Nf2 g4 Bd3 Re6
     """
-    moves = textwrap.dedent(game).strip().split()
-
     board = Board("Standard")
     t0 = time.time()
-    move_counts = []
-    for move in moves:
-        board.process_move(move)
-        move_counts.append( sum(len(v) for v in board.allowed_moves.values()) )
+    board.load_pgn(game)
     t1 = time.time()
-    print("\nEvaluated {:d} moves in {:f} sec".format(len(moves), t1-t0))
-    print("({:f} sec/position)".format((t1-t0)/len(moves)))
+
+    move_count = len(board.move_history)
+    print("\nEvaluated {:d} moves in {:f} sec".format(move_count, t1-t0))
+    print("({:f} sec/position)".format((t1-t0)/move_count))
+    print("({:f} position/sec)".format(move_count/(t1-t0)))
     return
 
 def main():
@@ -1440,7 +1477,7 @@ def main():
     return
 
 if __name__ == "__main__":
-    if 1:
+    if 0:
         test()
     else:
         main()
