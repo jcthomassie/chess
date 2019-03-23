@@ -4,7 +4,6 @@ Created on Fri Mar  8 09:57:04 2019
 
 @author: jthom
 """
-import copy
 import time
 
 ###############################################################################
@@ -738,7 +737,7 @@ class Board:
                         self.print_square_moves(piece.square)
                 # valid moves for a square
                 else:
-                    self.print_square_moves(Square(move_input[:-1]))
+                    self.print_square_moves(Square.from_str(move_input[:-1]))
             else:
                 actionable = True
 
@@ -1413,7 +1412,7 @@ def main():
     return
 
 if __name__ == "__main__":
-    if 1:
+    if 0:
         test()
     else:
         main()
