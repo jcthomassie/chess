@@ -543,18 +543,18 @@ class Board:
         check.
         """
         cleaned = dict( )
-        test_board = copy.deepcopy(self)
+        color = self.to_move
         for from_square, targets in move_lookup.items():
             cleaned_targets = [ ]
             for to_square in targets:
                 # Try the move on the test_board
-                move = test_board.load_move(from_square, to_square, validate=False)
-                test_board.push_move(move)
+                move = Move.from_squares(from_square, to_square, self)
+                self.push_move(move)
                 # Keep the move if it does not cause check
-                if not test_board.check(color=self.to_move):
+                if not self.check(color=color):
                     cleaned_targets.append(to_square)
                 # Reset for next test
-                test_board.undo_move()
+                self.undo_move()
             if len(cleaned_targets) > 0:
                 cleaned[from_square] = cleaned_targets
         return cleaned
@@ -1413,7 +1413,7 @@ def main():
     return
 
 if __name__ == "__main__":
-    if 0:
+    if 1:
         test()
     else:
         main()
