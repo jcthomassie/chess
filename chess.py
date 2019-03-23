@@ -205,10 +205,8 @@ class Board:
             self.board = board
         # Game trackers
         self.move_history = [ ]
-        self.castle_states = { "Q": True,
-                               "K": True,
-                               "q": True,
-                               "k": True, }
+        self.castle_states = { WHITE : { "Q": True, "K": True },
+                               BLACK : { "Q": True, "K": True }, }
         self.qr_home = { WHITE: Square(N_RANKS - 1, 0),
                          BLACK: Square(0, 0), }
         self.kr_home = { WHITE: Square(N_RANKS - 1, N_FILES - 1),
@@ -417,18 +415,13 @@ class Board:
             pinned.append(piece)
         return pinned
 
-    def can_castle(self, king, rook):
+    def verify_castle(self, king, rook):
         """
         Return True if the King and Rook can castle.
         Return False otherwise.
         """
-        if king.has_moved or rook.has_moved:
-            return False
-        if king.row != rook.row:
-            return False
         if self.obstruction(king.square, rook.square):
             return False
-
         # Make sure king doesn't cross through check (include current square)
         path = list(self.square_slice(king.square, rook.square))[:3]
         for square in path:
@@ -447,9 +440,17 @@ class Board:
             raise TypeError("valid_castles king must be a King or None!")
         # Build list of castle moves
         moves = [ ]
-        for rook in self.find_pieces(Rook, king.color):
-            if self.can_castle(king, rook):
-                moves.append(list(self.square_slice(king.square, rook.square))[2])
+        qrook = self.qr_home[king.color]
+        if isinstance(qrook, Rook):
+            if self.castle_states[king.color]["Q"]:
+                if self.verify_castle(king, qrook):
+                    moves.append(Square(king.row, king.col - 2))
+        krook = self.kr_home[king.color]
+        if isinstance(krook, Rook):
+            if self.castle_states[king.color]["K"]:
+                if self.verify_castle(king, krook):
+                    moves.append(Square(king.row, king.col + 2))
+                
         return moves
 
     def valid_targets_king(self, king):
@@ -596,8 +597,8 @@ class Board:
             self[piece.square] = piece
         # Update and store game state
         self.move_history.append(move)
-        for key in move.castle_bans:
-            self.castle_states[key] == False
+        for side in move.castle_bans:
+            self.castle_states[self.to_move][side] == False
         self.en_passant_square = move.en_passant_square
         self.to_move = FLIP_COLOR[self.to_move]
         # TODO: update halfmoves and fullmoves
@@ -618,16 +619,17 @@ class Board:
         # Revert removals
         for piece in last_move.removals:
             self[piece.square] = piece
+
+        self.to_move = FLIP_COLOR[self.to_move]
         # Revert castle bans
-        for key in last_move.castle_bans:
-            self.castle_states[key] == True
+        for side in last_move.castle_bans:
+            self.castle_states[self.to_move][side] == True
         # Get previous en passant
         if len(self.move_history) > 0:
             self.en_passant_square = self.move_history[-1].en_passant_square
         else:
             self.en_passant_square = None
         
-        self.to_move = FLIP_COLOR[self.to_move]
         # TODO: update halfmoves and fullmoves
         return
 
@@ -1029,7 +1031,7 @@ class Move:
         # Board changes
         self.additions = additions # list of added pieces
         self.removals = removals # list of removed pieces
-        self.castle_bans = castle_bans # list of K, Q, k or q
+        self.castle_bans = castle_bans # list of K, Q
         self.en_passant_square = en_passant_square # en passant square
         return
     
@@ -1091,24 +1093,15 @@ class Move:
                 additions.append( Rook(rook_to, rook.color, has_moved=True) )
                 removals.append( rook )
             # Any king move prevents future castles
-            if piece.color == WHITE:
-                castle_bans.extend(["K", "Q"])
-            else:
-                castle_bans.extend(["k", "q"])
+            castle_bans.extend(["K", "Q"])
         # Rook moves prevent future castles with that rook
         elif isinstance(piece, Rook):
             if from_square == board.qr_home[piece.color]:
-                if piece.color == WHITE:
-                    castle_bans.append("Q")
-                else:
-                    castle_bans.append("K")
+                castle_bans.append("Q")
             elif from_square == board.kr_home[piece.color]:
-                if piece.color == WHITE:
-                    castle_bans.append("q")
-                else:
-                    castle_bans.append("k")
+                castle_bans.append("K")
         # Only keep castle bans that are currently allowed
-        castle_bans = [ b for b in castle_bans if board.castle_states[b] ]
+        castle_bans = [ b for b in castle_bans if board.castle_states[piece.color][b] ]
         
         return cls( additions, 
                     removals, 
