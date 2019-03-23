@@ -706,6 +706,9 @@ class Board:
                 if draw.strip().upper() == "A":
                     self.winner = DRAW
                     actionable = True
+            # LIST: print list of previous moves
+            elif move_input.upper() == "L":
+                print(self.pgn_str())
             # MOVES: print valid moves
             elif move_input[-1] == "?":
                 # all valid moves
@@ -908,7 +911,7 @@ class Board:
         if self.check():
             print("\n" + space + "  * * * King is in check! * * *")
         print("_________________________________________________________")
-        print("Enter move: ( [R]esign | [D]raw | [U]ndo | [?] )")
+        print("Enter move: ( [R]esign | [D]raw | [U]ndo | [L]og | [?] )")
         return
 
     @property
@@ -1122,7 +1125,9 @@ class Move:
         piece_1 = self.additions[0]
         end = str(piece_1.square).lower()
         if type(piece_0) == Pawn:
-            start = piece_0.file.lower()
+            start = ""
+            if len(self.removals) > 1:
+                start += piece_0.file.lower()
             if type(piece_1) != Pawn:
                 end += str(piece_1).upper()
         else:
@@ -1131,7 +1136,6 @@ class Move:
 
         if len(self.removals) > 1:
             start += "x"
-
         return start + end
 
     @staticmethod
