@@ -5,7 +5,6 @@ Created on Fri Mar  8 09:57:04 2019
 @author: jthom
 """
 import time
-from chess import gui
 ###############################################################################
 #  GLOBALS                                                                    #
 ###############################################################################
@@ -1007,11 +1006,6 @@ class Board:
         Return a string of all stored moves for the game in PGN format.
         """
         return " ".join([ m.pgn_str() for m in self.move_history ])
-
-    def show(self):
-        with gui.Game(self) as game:
-            game.loop()
-        return
 
     def __str__(self):
         """
