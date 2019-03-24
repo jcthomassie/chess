@@ -5,13 +5,22 @@ import pygame
 from chess import core
 
 # COLORS
-BLACK_RGB = (181, 136, 99)
-WHITE_RGB = (240, 217, 181)
-BG_RGB = (0, 0, 0)
+BLACK_RGB = (181, 136, 99) # brown
+WHITE_RGB = (240, 217, 181) # tan
+BG_RGB = (0, 0, 0) # black
+
+TARGET_RGB = (132, 132, 132) # grey
+CHECK_RGB = () # red
+ARROW_RGB = () # green
 
 # GEOMETRY
 SQUARE_PIX = 80 # pixels
 MARGIN_PIX = 10 # pixels
+
+def square_center(row, col):
+    x = MARGIN_PIX + (col + 1/2) * SQUARE_PIX
+    y = MARGIN_PIX + (row + 1/2) * SQUARE_PIX
+    return round(x), round(y)
 
 class PieceIcon(pygame.sprite.Sprite):
     """
@@ -19,19 +28,21 @@ class PieceIcon(pygame.sprite.Sprite):
     """
     def __init__(self, chess_piece):
         super(PieceIcon, self).__init__()
-
-        piece_color = chess_piece.color_name.lower()
-        piece_name = type(chess_piece).__name__.lower()
-        image_dir = os.path.join(os.path.dirname(__file__), "icons")
-        image_path = os.path.join(image_dir, "{}_{}.png".format( piece_name, piece_color ))
-        # Create an image of the block, and fill it with a color.
-        # This could also be an image loaded from the disk.
-        self.image = pygame.transform.smoothscale(pygame.image.load(image_path), (SQUARE_PIX, SQUARE_PIX))
+        im = self.get_image(chess_piece)
+        self.image = pygame.transform.smoothscale(im, (SQUARE_PIX, SQUARE_PIX))
         self.rect = self.image.get_rect()
 
         self.piece_color = chess_piece.color
         self.piece_type = type(chess_piece)
         self.set_square(chess_piece.square)
+
+    @staticmethod
+    def get_image(chess_piece):
+        piece_color = chess_piece.color_name.lower()
+        piece_name = type(chess_piece).__name__.lower()
+        image_dir = os.path.join(os.path.dirname(__file__), "icons")
+        image_path = os.path.join(image_dir, "{}_{}.png".format( piece_name, piece_color ))
+        return pygame.image.load(image_path)
 
     @property
     def row(self):
@@ -72,24 +83,16 @@ class BoardIcon(pygame.Surface):
                 pygame.draw.rect(self, next(colors), rect)
             next(colors)
 
-class SquareDotIcon:
-    pass
-
-class Arrow:
-    pass
-
 class Game:
 
     def __init__(self, board):
         # Connect board/game engine
         self.board = board
-
         # Create display
         board_width = SQUARE_PIX * len(self.board.board[0])
         board_height = SQUARE_PIX * len(self.board.board)
         dimensions = (board_width + 2 * MARGIN_PIX, board_height + 2 * MARGIN_PIX)
         self.screen = pygame.display.set_mode(dimensions)
-
         # Generate images
         self.board_icon = BoardIcon(board_width, board_height, SQUARE_PIX)
         self.piece_sprites = pygame.sprite.Group()
@@ -99,6 +102,14 @@ class Game:
 
         self.latched = None
         return
+
+    def draw_target_dot(self, square):
+        coord = square_center(square.row, square.col)
+        radius = SQUARE_PIX // 8
+        pygame.draw.circle(self.screen, TARGET_RGB, coord, radius, 0)
+
+    def draw_move_arrow(self, from_square, to_square):
+        pass
 
     def get_moveable_pieces(self):
         """
@@ -111,11 +122,10 @@ class Game:
                 moveable.append(piece)
         return moveable
 
-    def get_piece_targets(self, piece):
-        return self.board.allowed_moves[piece.square]
-
-    def show_moves(self):
-        pass
+    def show_moves(self, chess_piece):
+        for target in self.board.allowed_moves[chess_piece.square]:
+            self.draw_target_dot(target)
+        return
 
     def start_move(self, event):
         """
@@ -140,7 +150,7 @@ class Game:
         self.latched = None
         return
 
-    def apply_move(self, move):
+    def move_sprites(self, move):
         """
         Update sprites using move info.
         """
@@ -156,17 +166,23 @@ class Game:
 
     def attempt_move(self, from_square, to_square):
         try:
-            # Parse move and validate
             move = core.Move.from_squares(from_square, to_square, self.board)
             self.board.push_move(move)
-            # Apply to GUI
-            self.apply_move(move)
-            return True
-        except Exception as e:
+            self.move_sprites(move)
+        except core.InvalidMoveError as e:
             print("{}: {}".format(e.__class__.__name__, e))
-            return False
+        return
+
+    def undo_move(self):
+        if len(self.board.move_history) > 0:
+            last_move = self.board.move_history[-1]
+            self.move_sprites(last_move.inverse())
+            self.board.undo_move()
 
     def loop(self):
+        """
+        Run the game loop
+        """
         game_exit = False
         while not game_exit:
             # Process events
@@ -177,15 +193,19 @@ class Game:
                     self.start_move(event)
                 elif event.type == pygame.MOUSEBUTTONUP:
                     self.finish_move(event)
-
-            # Drag latched pieces
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_u:
+                        self.undo_move()
+            # Update pieces
             if isinstance(self.latched, PieceIcon):
                 self.latched.drag()
 
-            # Draw board and pieces
+            # Draw board
             self.screen.fill(BG_RGB)
             self.screen.blit(self.board_icon, (MARGIN_PIX, MARGIN_PIX))
             self.piece_sprites.draw(self.screen)
+            if isinstance(self.latched, PieceIcon):
+                self.show_moves(self.latched)
 
             pygame.display.flip()
         return

@@ -1038,6 +1038,12 @@ class Move:
         self.en_passant_square = en_passant_square # en passant square
         return
 
+    def inverse(self):
+        """
+        Return inverse of move.
+        """
+        return Move(self.removals, self.additions)
+
     @classmethod
     def from_squares(cls, from_square, to_square, board, promote_type=None, validate=True):
         """
