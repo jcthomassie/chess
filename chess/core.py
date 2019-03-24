@@ -1490,7 +1490,7 @@ def main():
     return
 
 if __name__ == "__main__":
-    if 1:
+    if 0:
         test()
     else:
         main()
