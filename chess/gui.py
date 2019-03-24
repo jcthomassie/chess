@@ -25,23 +25,28 @@ class PieceIcon(pygame.sprite.Sprite):
         # Create an image of the block, and fill it with a color.
         # This could also be an image loaded from the disk.
         self.image = pygame.transform.smoothscale(pygame.image.load(image_path), (SQUARE_PIX, SQUARE_PIX))
-        self.rect = self.image.get_bounding_rect()
+        self.rect = self.image.get_rect()
 
-        self.set_square(chess_piece)
+        self.set_square(chess_piece.row, chess_piece.col)
 
-    def set_square(self, chess_piece):
-        self.row = chess_piece.row
-        self.col = chess_piece.col
+    def set_square(self, row, col):
+        self.row = row
+        self.col = col
         self.snap_to_square()
 
     def snap_to_square(self):
         self.rect.x = MARGIN_PIX + self.col * SQUARE_PIX
         self.rect.y = MARGIN_PIX + self.row * SQUARE_PIX
 
-    def nearest_square(self):
-        row = ( self.rect.x - MARGIN_PIX ) // SQUARE_PIX
-        col = ( self.rect.y - MARGIN_PIX ) // SQUARE_PIX
-        return row, col
+    def drop(self):
+        row = ( self.rect.centery - MARGIN_PIX ) // SQUARE_PIX
+        col = ( self.rect.centerx - MARGIN_PIX ) // SQUARE_PIX
+        self.set_square(row, col)
+
+    def update(self):
+        pos = pygame.mouse.get_pos()
+        self.rect.centerx = pos[0]
+        self.rect.centery = pos[1]
 
 
 class BoardIcon(pygame.Surface):
@@ -59,12 +64,13 @@ class BoardIcon(pygame.Surface):
 class Game:
 
     def __init__(self, board):
+        # Connect board/game engine
         self.board = board
 
         # Create screen
+        pygame.display.set_caption("Chess")
         board_width = SQUARE_PIX * len(self.board.board[0])
         board_height = SQUARE_PIX * len(self.board.board)
-        pygame.display.set_caption("Chess")
         dimensions = (board_width + 2 * MARGIN_PIX, board_height + 2 * MARGIN_PIX)
         self.screen = pygame.display.set_mode(dimensions)
 
@@ -73,6 +79,8 @@ class Game:
         self.piece_sprites = pygame.sprite.Group()
         for piece in self.board.piece_generator():
             self.piece_sprites.add( PieceIcon(piece) )
+
+        self.latched = None
         return
 
     def loop(self):
@@ -83,9 +91,20 @@ class Game:
                 if event.type == pygame.QUIT:
                     game_exit = True
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    print("Mouse down")
+                    for piece in self.piece_sprites:
+                        if isinstance(self.latched, PieceIcon):
+                            break
+                        elif piece.rect.collidepoint(event.pos) == True:
+                            self.latched = piece
                 elif event.type == pygame.MOUSEBUTTONUP:
-                    print("Mouse up")
+                    if isinstance(self.latched, PieceIcon):
+                        self.latched.drop()
+                        self.latched.snap_to_square()
+                    self.latched = None
+
+            # Update latched pieces
+            if isinstance(self.latched, PieceIcon):
+                self.latched.update()
 
             # Draw board and pieces
             self.screen.fill(BG_RGB)
