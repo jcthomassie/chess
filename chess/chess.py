@@ -5,7 +5,7 @@ Created on Fri Mar  8 09:57:04 2019
 @author: jthom
 """
 import time
-
+from chess import gui
 ###############################################################################
 #  GLOBALS                                                                    #
 ###############################################################################
@@ -1008,6 +1008,11 @@ class Board:
         """
         return " ".join([ m.pgn_str() for m in self.move_history ])
 
+    def show(self):
+        with gui.Game(self) as game:
+            game.loop()
+        return
+
     def __str__(self):
         """
         Return a mulitline string of the current board.
@@ -1296,6 +1301,10 @@ class Piece:
     def file(self):
         return self.square.file
 
+    @property
+    def color_name(self):
+        return COLOR_NAME[self.color]
+
     def move_is_valid(self, d_row, d_col, capture=False):
         raise NotImplementedError()
 
@@ -1481,7 +1490,7 @@ def main():
     return
 
 if __name__ == "__main__":
-    if 0:
+    if 1:
         test()
     else:
         main()
