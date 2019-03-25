@@ -1282,6 +1282,31 @@ class Piece:
     def color_name(self):
         return COLOR_NAME[self.color]
 
+    def generate_row(self):
+        for col in range(0, self.col):
+            yield self.row, col
+        for col in range(self.col + 1, N_FILES):
+            yield self.row, col
+
+    def generate_col(self):
+        for row in range(0, self.row):
+            yield row, self.col
+        for row in range(self.row + 1, N_RANKS):
+            yield row, self.col
+
+    def generate_diag(self):
+        for row in range(0, self.row):
+            d_row = row - self.row
+            for col in ( self.col + d_row, self.col - d_row ):
+                yield row, col
+        for row in range(self.row + 1, N_RANKS):
+            d_row = row - self.row
+            for col in ( self.col + d_row, self.col - d_row ):
+                yield row, col
+
+    def generate_diag_b(self):
+        pass
+
     def move_is_valid(self, d_row, d_col, capture=False):
         raise NotImplementedError()
 
@@ -1359,10 +1384,7 @@ class Bishop(Piece):
         """
         Generate all squares that the piece could potentially move to.
         """
-        for row in range(0, N_RANKS):
-            d_row = row - self.row
-            for col in ( self.col + d_row, self.col - d_row ):
-                yield row, col
+        return self.generate_diag()
 
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
@@ -1418,10 +1440,10 @@ class Rook(Piece):
         """
         Generate all squares that the piece could potentially move to.
         """
-        for row in range(0, N_RANKS):
-            yield row, self.col
-        for col in range(0, N_FILES):
-            yield self.row, col
+        for coord in self.generate_col():
+            yield coord
+        for coord in self.generate_row():
+            yield coord
 
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
@@ -1445,15 +1467,13 @@ class Queen(Piece):
         Generate all squares that the piece could potentially move to.
         """
         # ROOK
-        for row in range(0, N_RANKS):
-            yield row, self.col
-        for col in range(0, N_FILES):
-            yield self.row, col
+        for coord in self.generate_col():
+            yield coord
+        for coord in self.generate_row():
+            yield coord
         # BISHOP
-        for row in range(0, N_RANKS):
-            d_row = row - self.row
-            for col in ( self.col + d_row, self.col - d_row ):
-                yield row, col
+        for coord in self.generate_diag():
+            yield coord
 
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
