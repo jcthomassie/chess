@@ -218,7 +218,9 @@ class Board:
         self.fullmoves = 1
 
         self._allowed_moves = dict( )
-        self._last_recompute = None
+        self._last_move_recompute = None
+        self._check = False
+        self._last_check_recompute = None
         return
 
     def __setitem__(self, locus, piece):
@@ -550,7 +552,7 @@ class Board:
                 move = Move.from_squares(from_square, to_square, self, validate=False)
                 self.push_move(move)
                 # Keep the move if it does not cause check
-                if not self.check(color=color):
+                if not self.king_attacked(color=color):
                     cleaned_targets.append(to_square)
                 # Reset for next test
                 self.undo_move()
@@ -558,16 +560,34 @@ class Board:
                 cleaned[from_square] = cleaned_targets
         return cleaned
 
+    def king_attacked(self, color):
+        """
+        Return True if current player is in check.
+        Return False otherwise.
+        """
+        king = self.find_king(color=color)
+        if len(self.get_attackers(king.square, FLIP_COLOR[king.color])) > 0:
+            return True
+        return False
+
+    @property
+    def check(self):
+        """
+        Update the current check state.
+        """
+        if self._last_check_recompute != len(self.move_history):
+            self._check = self.king_attacked(self.to_move)
+            self._last_check_recompute = len(self.move_history)
+        return self._check
+
     @property
     def allowed_moves(self):
         """
-        Update the stored dictionary of allowed moves. Call this every time the
-        board position is changed!
+        Update the stored dictionary of allowed moves.
         """
-        # OPTIMIZE
-        if self._last_recompute != len(self.move_history):
+        if self._last_move_recompute != len(self.move_history):
             self._allowed_moves = self.valid_moves_all()
-            self._last_recompute = len(self.move_history)
+            self._last_move_recompute = len(self.move_history)
         return self._allowed_moves
 
     def push_move(self, move):
@@ -647,24 +667,12 @@ class Board:
             raise InvalidBoardError("{} has more than one king!".format(COLOR_NAME[color]))
         return king_list[0]
 
-    def check(self, color=None):
-        """
-        Return True if current player is in check.
-        Return False otherwise.
-        """
-        if color is None:
-            color = self.to_move
-        king = self.find_king(color=color)
-        if len(self.get_attackers(king.square, FLIP_COLOR[king.color])) > 0:
-            return True
-        return False
-
     def checkmate(self):
         """
         Return True if current player is in checkmate.
         Return False otherwise.
         """
-        if self.check() and len(self.allowed_moves) == 0:
+        if self.check and len(self.allowed_moves) == 0:
             return True
         return False
 
@@ -907,7 +915,7 @@ class Board:
             mstr = str(e)
         print(space + "     {} to play!  (Spread: {})".format(pstr, mstr))
         # Announce check
-        if self.check():
+        if self.check:
             print("\n" + space + "  * * * King is in check! * * *")
         print("_________________________________________________________")
         print("Enter move: ( [R]esign | [D]raw | [U]ndo | [L]og | [?] )")
