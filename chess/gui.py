@@ -122,7 +122,7 @@ class Game:
 
     def draw_corner_highlight(self, square):
         corner = square_corner(square.row, square.col)
-        for dx, dy in itertools.permutations([-1, -1, 1, 1], 2):
+        for dx, dy in itertools.product([-1, 1], repeat=2):
             p0 = [corner[0], corner[1]]
             if dx == 1:
                 p0[0] += SQUARE_PIX - 1
