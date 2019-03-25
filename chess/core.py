@@ -443,7 +443,7 @@ class Board:
         moves.extend(self.valid_castles(king=king))
         return moves
 
-    def valid_square_piece(self, piece, square, recaptures=False):
+    def valid_square_piece(self, piece, square, recaptures=False, pseudovalid=False):
         """
         Return True if piece can move to square.
         Return False otherwise.
@@ -463,7 +463,7 @@ class Board:
             return False
         # Check if move is valid for piece
         d_row, d_col = square - piece.square
-        if not piece.move_is_valid(d_row, d_col, capture=(capture or recaptures)):
+        if not piece.move_is_valid(d_row, d_col, capture=(capture or recaptures), pseudovalid=pseudovalid):
             return False
         # Check for obstructions
         elif not piece.jumps:
@@ -471,7 +471,7 @@ class Board:
                 return False
         return True
 
-    def valid_targets_piece(self, piece, recaptures=False):
+    def valid_targets_piece(self, piece):
         """
         Return a list of all valid target squares for the specified piece.
         Does not consider whether a move leaves player in check,
@@ -484,8 +484,9 @@ class Board:
             if col < 0 or col > N_FILES - 1:
                 continue
             square = self.get_square(row, col)
-            if self.valid_square_piece(piece, square, recaptures=recaptures):
-                moves.append(square)
+            if not self.valid_square_piece(piece, square, pseudovalid=True):
+                continue
+            moves.append(square)
         return moves
 
     def valid_moves_all(self, remove_checks=True):
@@ -1297,15 +1298,12 @@ class Piece:
     def generate_diag(self):
         for row in range(0, self.row):
             d_row = row - self.row
-            for col in ( self.col + d_row, self.col - d_row ):
-                yield row, col
+            yield row, self.col + d_row
+            yield row, self.col - d_row
         for row in range(self.row + 1, N_RANKS):
             d_row = row - self.row
-            for col in ( self.col + d_row, self.col - d_row ):
-                yield row, col
-
-    def generate_diag_b(self):
-        pass
+            yield row, self.col + d_row
+            yield row, self.col - d_row
 
     def move_is_valid(self, d_row, d_col, capture=False):
         raise NotImplementedError()
@@ -1350,7 +1348,8 @@ class Pawn(Piece):
         """
         Generate all squares that the piece could potentially move to.
         """
-        yield self.row + 2 * self.unit, self.col
+        if not self.has_moved:
+            yield self.row + 2 * self.unit, self.col
         yield self.row + self.unit, self.col
         yield self.row + self.unit, self.col + self.unit
         yield self.row + self.unit, self.col - self.unit
@@ -1387,10 +1386,12 @@ class Bishop(Piece):
         return self.generate_diag()
 
     @staticmethod
-    def move_is_valid(d_row, d_col, **kwargs):
+    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
         """
         Rank and file must change by same amount
         """
+        if pseudovalid:
+            return True
         if abs(d_col) == abs(d_row):
             return True
         else:
@@ -1413,10 +1414,12 @@ class Knight(Piece):
                 yield self.row + d_row*s_row, self.col + d_col*s_col
 
     @staticmethod
-    def move_is_valid(d_row, d_col, **kwargs):
+    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
         """
         Rank or file must change by 2, the other must change by 1
         """
+        if pseudovalid:
+            return True
         if set(( abs(d_col), abs(d_row) )) == set(( 1, 2 )):
             return True
         else:
@@ -1446,10 +1449,12 @@ class Rook(Piece):
             yield coord
 
     @staticmethod
-    def move_is_valid(d_row, d_col, **kwargs):
+    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
         """
         Rank or file can change any amount, but one must not change
         """
+        if pseudovalid:
+            return True
         if ( d_col == 0 and d_row != 0 ) or ( d_row == 0 and d_col != 0 ):
             return True
         else:
@@ -1476,10 +1481,12 @@ class Queen(Piece):
             yield coord
 
     @staticmethod
-    def move_is_valid(d_row, d_col, **kwargs):
+    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
         """
         Can make any move that is valid for Rook or Bishop
         """
+        if pseudovalid:
+            return True
         if Bishop.move_is_valid(d_col, d_row) or Rook.move_is_valid(d_col, d_row):
             return True
         else:
@@ -1504,7 +1511,7 @@ class King(Piece):
             yield self.row, self.col - 2
 
     @staticmethod
-    def move_is_valid(d_row, d_col, castle=False, **kwargs):
+    def move_is_valid(d_row, d_col, castle=False, pseudovalid=False, **kwargs):
         """
         Can move 1 square any direction, or diagonally
         """
