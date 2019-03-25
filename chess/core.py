@@ -378,43 +378,15 @@ class Board:
             return True
         return False
 
-    def get_attackers(self, square, color):
+    def has_attackers(self, square, color):
         """
-        Check if any pieces of color are eyeing the square.
-        Return list of pieces.
+        Return True if any pieces of color are eyeing the square.
+        Return False otherwise
         """
-        attackers = [ ]
         for piece in self.piece_generator(color=color):
             if self.valid_square_piece(piece, square, recaptures=True):
-                attackers.append(piece)
-
-        return attackers
-
-    def get_pinners(self, square, color):
-        """
-        Check if any pieces of color are eyeing the square, but have one
-        blocker.
-        Return list of pieces.
-        """
-        pinners = [ ]
-        for piece in self.piece_generator(color=color):
-            threats = self.valid_targets_piece(piece, unpins_only=True)
-
-            if square in threats:
-                pinners.append(piece)
-        return pinners
-
-    def get_pinned(self, square, color):
-        """
-        Check if any pieces of color are pinned to the square. Returns
-        list of pieces
-        """
-        pinned = [ ]
-        for pinner in self.get_pinners(square, FLIP_COLOR[color]):
-            path = list(self.piece_slice(pinner.square, square))[1:-1]
-            piece = [p for p in path if p is not None][0]
-            pinned.append(piece)
-        return pinned
+                return True
+        return False
 
     def verify_castle(self, king, rook):
         """
@@ -426,7 +398,7 @@ class Board:
         # Make sure king doesn't cross through check (include current square)
         path = list(self.square_slice(king.square, rook.square))[:3]
         for square in path:
-            if len(self.get_attackers(square, FLIP_COLOR[king.color])) > 0:
+            if self.has_attackers(square, FLIP_COLOR[king.color]):
                 return False
         return True
 
@@ -464,13 +436,13 @@ class Board:
         # Normal moves
         for square in self.valid_targets_piece(king):
             # Keep moves that do not result in check
-            if len(self.get_attackers(square, FLIP_COLOR[king.color])) == 0:
+            if not self.has_attackers(square, FLIP_COLOR[king.color]):
                 moves.append(square)
         # Add castling moves
         moves.extend(self.valid_castles(king=king))
         return moves
 
-    def valid_square_piece(self, piece, square, recaptures=False, unpins_only=False):
+    def valid_square_piece(self, piece, square, recaptures=False):
         """
         Return True if piece can move to square.
         Return False otherwise.
@@ -492,22 +464,13 @@ class Board:
         d_row, d_col = square - piece.square
         if not piece.move_is_valid(d_row, d_col, capture=(capture or recaptures)):
             return False
-        # Only keep moves opened by an opponents move
-        if unpins_only:
-            if piece.jumps:
-                return False
-            path = list(self.piece_slice(piece.square, square))[1:-1]
-            blockers = [ p for p in path if p is not None]
-            # Piece must be blocked by exactly one piece of the opposite color
-            if len(blockers) != 1 or blockers[0].color == piece.color:
-                return False
         # Check for obstructions
         elif not piece.jumps:
             if self.obstruction(piece.square, square):
                 return False
         return True
 
-    def valid_targets_piece(self, piece, recaptures=False, unpins_only=False):
+    def valid_targets_piece(self, piece, recaptures=False):
         """
         Return a list of all valid target squares for the specified piece.
         Does not consider whether a move leaves player in check,
@@ -515,7 +478,7 @@ class Board:
         """
         moves = [ ]
         for square in self.square_list():
-            if self.valid_square_piece(piece, square, recaptures=recaptures, unpins_only=unpins_only):
+            if self.valid_square_piece(piece, square, recaptures=recaptures):
                 moves.append(square)
         return moves
 
@@ -566,7 +529,7 @@ class Board:
         Return False otherwise.
         """
         king = self.find_king(color=color)
-        if len(self.get_attackers(king.square, FLIP_COLOR[king.color])) > 0:
+        if self.has_attackers(king.square, FLIP_COLOR[king.color]):
             return True
         return False
 
@@ -1498,7 +1461,7 @@ def main():
     return
 
 if __name__ == "__main__":
-    if 0:
+    if 1:
         test()
     else:
         main()
