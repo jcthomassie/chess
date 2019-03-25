@@ -5,6 +5,7 @@ Created on Fri Mar  8 09:57:04 2019
 @author: jthom
 """
 import time
+import itertools
 ###############################################################################
 #  GLOBALS                                                                    #
 ###############################################################################
@@ -477,7 +478,12 @@ class Board:
         does not consider castling, does not consider en passant.
         """
         moves = [ ]
-        for square in self.square_list():
+        for row, col in piece.pseudovalid_coords():
+            if row < 0 or row > N_RANKS - 1:
+                continue
+            if col < 0 or col > N_FILES - 1:
+                continue
+            square = self.get_square(row, col)
             if self.valid_square_piece(piece, square, recaptures=recaptures):
                 moves.append(square)
         return moves
@@ -1313,22 +1319,31 @@ class Pawn(Piece):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.unit = COLOR_ORIENTATION[self.color]
+
+    def pseudovalid_coords(self):
+        """
+        Generate all squares that the piece could potentially move to.
+        """
+        yield self.row + 2 * self.unit, self.col
+        yield self.row + self.unit, self.col
+        yield self.row + self.unit, self.col + self.unit
+        yield self.row + self.unit, self.col - self.unit
 
     def move_is_valid(self, d_row, d_col, capture=False, **kwargs):
         """
         Can move forward 2 if it has not yet moved. Otherwise can only move 1.
         If the move is a capture, it can move diagonally
         """
-        fwd = COLOR_ORIENTATION[self.color]
         # If move is a capture, only allow forward diagonal moves by 1 space
         if capture:
-            if abs(d_col) == ( fwd * d_row ) == 1:
+            if abs(d_col) == ( self.unit * d_row ) == 1:
                 return True
             else:
                 return False
         else:
             # Only allow forward moves by 1 (if has not moved, then allow 2)
-            if d_col == 0 and ( fwd * d_row == 1 or (not self.has_moved and fwd * d_row == 2) ):
+            if d_col == 0 and ( self.unit * d_row == 1 or (not self.has_moved and self.unit * d_row == 2) ):
                 return True
             else:
                 return False
@@ -1339,6 +1354,15 @@ class Bishop(Piece):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+    def pseudovalid_coords(self):
+        """
+        Generate all squares that the piece could potentially move to.
+        """
+        for row in range(0, N_RANKS):
+            d_row = row - self.row
+            for col in ( self.col + d_row, self.col - d_row ):
+                yield row, col
 
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
@@ -1357,6 +1381,14 @@ class Knight(Piece):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+    def pseudovalid_coords(self):
+        """
+        Generate all squares that the piece could potentially move to.
+        """
+        for d_row, d_col in itertools.permutations([2, 1]):
+            for s_row, s_col in itertools.product([1, -1], repeat=2):
+                yield self.row + d_row*s_row, self.col + d_col*s_col
 
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
@@ -1382,6 +1414,15 @@ class Rook(Piece):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    def pseudovalid_coords(self):
+        """
+        Generate all squares that the piece could potentially move to.
+        """
+        for row in range(0, N_RANKS):
+            yield row, self.col
+        for col in range(0, N_FILES):
+            yield self.row, col
+
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
         """
@@ -1399,6 +1440,21 @@ class Queen(Piece):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    def pseudovalid_coords(self):
+        """
+        Generate all squares that the piece could potentially move to.
+        """
+        # ROOK
+        for row in range(0, N_RANKS):
+            yield row, self.col
+        for col in range(0, N_FILES):
+            yield self.row, col
+        # BISHOP
+        for row in range(0, N_RANKS):
+            d_row = row - self.row
+            for col in ( self.col + d_row, self.col - d_row ):
+                yield row, col
+
     @staticmethod
     def move_is_valid(d_row, d_col, **kwargs):
         """
@@ -1415,6 +1471,17 @@ class King(Piece):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+
+    def pseudovalid_coords(self):
+        """
+        Generate all squares that the piece could potentially move to.
+        """
+        for d_row, d_col in itertools.product([1, 0, -1], [1, 0, -1]):
+            yield self.row + d_row, self.col + d_col
+        if not self.has_moved:
+            yield self.row, self.col + 2
+            yield self.row, self.col - 2
 
     @staticmethod
     def move_is_valid(d_row, d_col, castle=False, **kwargs):
