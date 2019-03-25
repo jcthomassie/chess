@@ -1099,14 +1099,18 @@ class Move:
                 additions.append( Rook(rook_to, rook.color, has_moved=True) )
                 removals.append( rook )
             # Any king move prevents future castles
-            castle_updates.append(("Q", False))
-            castle_updates.append(("K", False))
+            if board.castle_states[piece.color]["Q"]:
+                castle_updates.append(("Q", False))
+            if board.castle_states[piece.color]["K"]:
+                castle_updates.append(("K", False))
         # Rook moves prevent future castles with that rook
         elif isinstance(piece, Rook):
             if from_square == board.qr_home[piece.color]:
-                castle_updates.append(("Q", False))
+                if board.castle_states[piece.color]["Q"]:
+                    castle_updates.append(("Q", False))
             elif from_square == board.kr_home[piece.color]:
-                castle_updates.append(("K", False))
+                if board.castle_states[piece.color]["K"]:
+                    castle_updates.append(("K", False))
 
         return cls( additions,
                     removals,
@@ -1420,7 +1424,7 @@ class Bishop(Piece):
         """
         if pseudovalid:
             return True
-        if abs(d_col) == abs(d_row):
+        if abs(d_col) == abs(d_row) != 0:
             return True
         else:
             return False
