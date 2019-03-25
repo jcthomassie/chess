@@ -1,6 +1,7 @@
 import os
 import itertools
 import pygame
+from pygame import gfxdraw
 
 from chess import core
 
@@ -14,13 +15,18 @@ CHECK_RGB = () # red
 ARROW_RGB = () # green
 
 # GEOMETRY
-SQUARE_PIX = 80 # pixels
+SQUARE_PIX = 81 # pixels
 MARGIN_PIX = 10 # pixels
 
 def square_center(row, col):
     x = MARGIN_PIX + (col + 1/2) * SQUARE_PIX
     y = MARGIN_PIX + (row + 1/2) * SQUARE_PIX
     return round(x), round(y)
+
+def square_corner(row, col):
+    x = MARGIN_PIX + col * SQUARE_PIX
+    y = MARGIN_PIX + row * SQUARE_PIX
+    return x, y
 
 class PieceIcon(pygame.sprite.Sprite):
     """
@@ -31,6 +37,7 @@ class PieceIcon(pygame.sprite.Sprite):
         im = self.get_image(chess_piece)
         self.image = pygame.transform.smoothscale(im, (SQUARE_PIX, SQUARE_PIX))
         self.rect = self.image.get_rect()
+        self.layer = 0
 
         self.piece_color = chess_piece.color
         self.piece_type = type(chess_piece)
@@ -83,6 +90,11 @@ class BoardIcon(pygame.Surface):
                 pygame.draw.rect(self, next(colors), rect)
             next(colors)
 
+
+class Arrow:
+    pass
+
+
 class Game:
 
     def __init__(self, board):
@@ -95,18 +107,31 @@ class Game:
         self.screen = pygame.display.set_mode(dimensions)
         # Generate images
         self.board_icon = BoardIcon(board_width, board_height, SQUARE_PIX)
-        self.piece_sprites = pygame.sprite.Group()
+        self.sprites = pygame.sprite.LayeredUpdates()
         for piece in self.board.piece_generator():
-            self.piece_sprites.add( PieceIcon(piece) )
-        self.sprite_lookup = { piece.square: piece for piece in self.piece_sprites }
+            self.sprites.add( PieceIcon(piece) )
+        self.sprite_lookup = { piece.square: piece for piece in self.sprites.get_sprites_from_layer(0) }
 
         self.latched = None
         return
 
+    def draw_corner_highlight(self, square):
+        corner = square_corner(square.row, square.col)
+        for dx, dy in itertools.permutations([-1, -1, 1, 1], 2):
+            p0 = [corner[0], corner[1]]
+            if dx == 1:
+                p0[0] += SQUARE_PIX - 1
+            if dy == 1:
+                p0[1] += SQUARE_PIX - 1
+            p1 = [p0[0] - dx * 14, p0[1]]
+            p2 = [p0[0], p0[1] - dy * 14]
+            pygame.draw.polygon(self.screen, TARGET_RGB, [p0, p1, p2])
+
     def draw_target_dot(self, square):
         coord = square_center(square.row, square.col)
         radius = SQUARE_PIX // 8
-        pygame.draw.circle(self.screen, TARGET_RGB, coord, radius, 0)
+        gfxdraw.aacircle(self.screen, *coord, radius, TARGET_RGB)
+        gfxdraw.filled_circle(self.screen, *coord, radius, TARGET_RGB)
 
     def draw_move_arrow(self, from_square, to_square):
         pass
@@ -117,24 +142,31 @@ class Game:
         state.
         """
         moveable = [ ]
-        for piece in self.piece_sprites:
+        for piece in self.sprites.get_sprites_from_layer(0):
             if piece.square in self.board.allowed_moves:
                 moveable.append(piece)
         return moveable
 
     def show_moves(self, chess_piece):
-        for target in self.board.allowed_moves[chess_piece.square]:
-            self.draw_target_dot(target)
+        if chess_piece.square in self.board.allowed_moves:
+            for target in self.board.allowed_moves[chess_piece.square]:
+                if self.board[target] is None:
+                    self.draw_target_dot(target)
+                else:
+                    self.draw_corner_highlight(target)
         return
 
     def start_move(self, event):
         """
         Mouse down event.
         """
-        for piece in self.get_moveable_pieces():
+        for piece in self.sprites.get_sprites_from_layer(0):
             if isinstance(self.latched, PieceIcon):
                 break
+            elif piece.piece_color != self.board.to_move:
+                continue
             elif piece.rect.collidepoint(event.pos) == True:
+                self.sprites.move_to_front(piece)
                 self.latched = piece
         return
 
@@ -157,11 +189,11 @@ class Game:
         # Update sprites
         for piece in move.removals:
             sprite = self.sprite_lookup[piece.square]
-            self.piece_sprites.remove(sprite)
+            self.sprites.remove(sprite)
             del self.sprite_lookup[piece.square]
         for piece in move.additions:
             sprite = PieceIcon(piece)
-            self.piece_sprites.add( sprite )
+            self.sprites.add( sprite )
             self.sprite_lookup[piece.square] = sprite
 
     def attempt_move(self, from_square, to_square):
@@ -169,8 +201,8 @@ class Game:
             move = core.Move.from_squares(from_square, to_square, self.board)
             self.board.push_move(move)
             self.move_sprites(move)
-        except core.InvalidMoveError as e:
-            print("{}: {}".format(e.__class__.__name__, e))
+        except:
+            pass
         return
 
     def undo_move(self):
@@ -196,16 +228,16 @@ class Game:
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_u:
                         self.undo_move()
-            # Update pieces
-            if isinstance(self.latched, PieceIcon):
-                self.latched.drag()
 
             # Draw board
             self.screen.fill(BG_RGB)
             self.screen.blit(self.board_icon, (MARGIN_PIX, MARGIN_PIX))
-            self.piece_sprites.draw(self.screen)
+
+            # Update and draw pieces
             if isinstance(self.latched, PieceIcon):
+                self.latched.drag()
                 self.show_moves(self.latched)
+            self.sprites.draw(self.screen)
 
             pygame.display.flip()
         return
