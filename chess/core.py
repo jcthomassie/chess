@@ -499,51 +499,42 @@ class Board:
                     continue
             yield square
 
-    def valid_moves_all(self, remove_checks=True):
+    def valid_moves_all(self):
         """
         Return a dictionary of all valid moves in the current board
         configuration. Keys are from square, values are lists of to squares.
         """
         move_lookup = dict( )
+        king_square = self.find_king(color=self.to_move).square
         for piece in self.piece_generator(color=self.to_move):
             if isinstance(piece, Pawn):
-                piece_targets = list( self.valid_targets_pawn(piece) )
+                piece_targets = self.valid_targets_pawn(piece)
             elif isinstance(piece, King):
-                piece_targets = list( self.valid_targets_king(piece) )
+                piece_targets = self.valid_targets_king(piece)
             else:
-                piece_targets = list( self.valid_targets_piece(piece) )
+                piece_targets = self.valid_targets_piece(piece)
 
-            if len(piece_targets) > 0:
-                move_lookup[piece.square] = piece_targets
-        # Remove moves that leave king in check
-        if remove_checks:
-            move_lookup = self.remove_check_results(move_lookup)
+            cleaned = list(self.remove_checks(piece.square, piece_targets, king_square, piece.color))
+            if len(cleaned) > 0:
+                move_lookup[piece.square] = cleaned
         return move_lookup
-
-    def remove_check_results(self, move_lookup):
+    
+    def remove_checks(self, from_square, target_list, king_square, color):
         """
-        Takes a move_lookup dict. Removes all moves that leave the king in
-        check.
+        Step through a target list for a piece. Yield any squares that do not
+        leave the piece color's king in check.
         """
-        cleaned = dict( )
-        color = self.to_move
-        king_square = self.find_king(color=color).square
-        for from_square, targets in move_lookup.items():
-            cleaned_targets = [ ]
-            for to_square in targets:
-                # Try the move on the test_board
-                move = Move.from_squares(from_square, to_square, self, validate=False)
-                self.push_move(move)
-                # Keep the move if it does not cause check
-                if from_square == king_square and not self.has_attackers(to_square, FLIP_COLOR[color]):
-                    cleaned_targets.append(to_square)
-                elif not self.has_attackers(king_square, FLIP_COLOR[color]):
-                    cleaned_targets.append(to_square)
-                # Reset for next test
-                self.undo_move()
-            if len(cleaned_targets) > 0:
-                cleaned[from_square] = cleaned_targets
-        return cleaned
+        for to_square in target_list:
+            # Try the move on the test_board
+            move = Move.from_squares(from_square, to_square, self, validate=False)
+            self.push_move(move)
+            # Keep the move if it does not cause check
+            if from_square == king_square and not self.has_attackers(to_square, FLIP_COLOR[color]):
+                yield to_square
+            elif not self.has_attackers(king_square, FLIP_COLOR[color]):
+                yield to_square
+            # Reset for next test
+            self.undo_move()
 
     @property
     def check(self):
