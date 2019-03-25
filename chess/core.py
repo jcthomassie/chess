@@ -565,8 +565,8 @@ class Board:
             self[piece.square] = piece
         # Update and store game state
         self.move_history.append(move)
-        for side in move.castle_bans:
-            self.castle_states[self.to_move][side] = False
+        for side, state in move.castle_updates:
+            self.castle_states[self.to_move][side] = state
         self.en_passant_square = move.en_passant_square
         self.to_move = FLIP_COLOR[self.to_move]
         # TODO: update halfmoves and fullmoves
@@ -590,8 +590,8 @@ class Board:
 
         self.to_move = FLIP_COLOR[self.to_move]
         # Revert castle bans
-        for side in last_move.castle_bans:
-            self.castle_states[self.to_move][side] = True
+        for side, state in last_move.castle_updates:
+            self.castle_states[self.to_move][side] = not state
         # Get previous en passant
         if len(self.move_history) > 0:
             self.en_passant_square = self.move_history[-1].en_passant_square
@@ -1001,11 +1001,11 @@ class Move:
     Class for interpreting a move input. Encodes the move in a set of piece
     additions and removals.
     """
-    def __init__(self, additions, removals, castle_bans=[], en_passant_square=None):
+    def __init__(self, additions, removals, castle_updates=[], en_passant_square=None):
         # Board changes
         self.additions = additions # list of added pieces
         self.removals = removals # list of removed pieces
-        self.castle_bans = castle_bans # list of K, Q
+        self.castle_updates = castle_updates # list of K, Q
         self.en_passant_square = en_passant_square # en passant square
         return
 
@@ -1013,7 +1013,8 @@ class Move:
         """
         Return inverse of move.
         """
-        return Move(self.removals, self.additions)
+        castle_updates = [ (side, not state) for side, state in self.castle_updates ]
+        return Move(self.removals, self.additions, castle_updates=castle_updates)
 
     @classmethod
     def from_squares(cls, from_square, to_square, board, promote_type=None, validate=True):
@@ -1032,7 +1033,7 @@ class Move:
 
         additions = [ ]
         removals = [ ]
-        castle_bans = [ ]
+        castle_updates = [ ]
         en_passant_square = None
 
         # Get pieces
@@ -1078,19 +1079,18 @@ class Move:
                 additions.append( Rook(rook_to, rook.color, has_moved=True) )
                 removals.append( rook )
             # Any king move prevents future castles
-            castle_bans.extend(["K", "Q"])
+            castle_updates.append(("Q", False))
+            castle_updates.append(("K", False))
         # Rook moves prevent future castles with that rook
         elif isinstance(piece, Rook):
             if from_square == board.qr_home[piece.color]:
-                castle_bans.append("Q")
+                castle_updates.append(("Q", False))
             elif from_square == board.kr_home[piece.color]:
-                castle_bans.append("K")
-        # Only keep castle bans that are currently allowed
-        castle_bans = [ b for b in castle_bans if board.castle_states[piece.color][b] ]
+                castle_updates.append(("K", False))
 
         return cls( additions,
                     removals,
-                    castle_bans=castle_bans,
+                    castle_updates=castle_updates,
                     en_passant_square=en_passant_square )
 
     def pgn_str(self):
