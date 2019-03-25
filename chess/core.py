@@ -443,6 +443,27 @@ class Board:
         moves.extend(self.valid_castles(king=king))
         return moves
 
+    def valid_targets_pawn(self, pawn):
+        """
+        Return a list of all valid target squares for a pawn. Gets list of
+        normal pawn moves, adds captures.
+        """
+        moves = [ ]
+        for row, col in pawn.pseudovalid_coords_regular():
+            target = self.board[row][col]
+            if target is None:
+                moves.append(self.get_square(row, col))
+            else:
+                break
+        for row, col in pawn.pseudovalid_coords_capture():
+            target = self.board[row][col]
+            square = self.get_square(row, col)
+            if isinstance(target, Piece) and target.color != pawn.color:
+                moves.append(square)
+            elif square == self.en_passant_square:
+                moves.append(square)
+        return moves
+
     def valid_square_piece(self, piece, square, recaptures=False, pseudovalid=False):
         """
         Return True if piece can move to square.
@@ -484,8 +505,14 @@ class Board:
             if col < 0 or col > N_FILES - 1:
                 continue
             square = self.get_square(row, col)
-            if not self.valid_square_piece(piece, square, pseudovalid=True):
+            # Check for target validity
+            target = self.board[row][col]
+            if isinstance(target, Piece) and target.color == piece.color:
                 continue
+            # Check for obstructions
+            elif not piece.jumps:
+                if self.obstruction(piece.square, square):
+                    continue
             moves.append(square)
         return moves
 
@@ -496,7 +523,9 @@ class Board:
         """
         move_lookup = dict( )
         for piece in self.piece_generator(color=self.to_move):
-            if isinstance(piece, King):
+            if isinstance(piece, Pawn):
+                piece_targets = self.valid_targets_pawn(piece)
+            elif isinstance(piece, King):
                 piece_targets = self.valid_targets_king(piece)
             else:
                 piece_targets = self.valid_targets_piece(piece)
@@ -1344,15 +1373,26 @@ class Pawn(Piece):
         super().__init__(*args, **kwargs)
         self.unit = COLOR_ORIENTATION[self.color]
 
-    def pseudovalid_coords(self):
+    def pseudovalid_coords_regular(self):
         """
-        Generate all squares that the piece could potentially move to.
+        Generate all squares that the piece could potentially move to (non-captures)
         """
+        row = self.row + self.unit
+        if 0 <= row < N_RANKS:
+            yield row, self.col
         if not self.has_moved:
-            yield self.row + 2 * self.unit, self.col
-        yield self.row + self.unit, self.col
-        yield self.row + self.unit, self.col + self.unit
-        yield self.row + self.unit, self.col - self.unit
+            row += self.unit
+            if 0 <= row < N_RANKS:
+                yield row, self.col
+
+    def pseudovalid_coords_capture(self):
+        """
+        Generate all squares that the piece could potentially move to (captures only)
+        """
+        if self.col < N_FILES - 1:
+            yield self.row + self.unit, self.col + 1
+        if self.col > 0:
+            yield self.row + self.unit, self.col - 1
 
     def move_is_valid(self, d_row, d_col, capture=False, **kwargs):
         """
@@ -1411,7 +1451,13 @@ class Knight(Piece):
         """
         for d_row, d_col in itertools.permutations([2, 1]):
             for s_row, s_col in itertools.product([1, -1], repeat=2):
-                yield self.row + d_row*s_row, self.col + d_col*s_col
+                row = self.row + d_row*s_row
+                if not 0 <= row < N_RANKS:
+                    continue
+                col = self.col + d_col*s_col
+                if not 0 <= col < N_FILES:
+                    continue
+                yield row, col
 
     @staticmethod
     def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
@@ -1515,6 +1561,8 @@ class King(Piece):
         """
         Can move 1 square any direction, or diagonally
         """
+        if pseudovalid:
+            return True
         if castle:
             if abs(d_row) == 0 and abs(d_col) == 2:
                 return True
