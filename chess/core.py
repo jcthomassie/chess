@@ -44,14 +44,17 @@ class Square:
     Board square representation. Allows flexible conversion between
     string and tuple representations
     """
+    ROW_RANGE = range(N_RANKS)
+    COL_RANGE = range(N_FILES)
+    
     def __init__(self, row, col, rank=None, file=None):
         """
         Takes row and col coordinates as input.
         """
         # Check if in bounds
-        if not row in range(0, N_RANKS):
+        if not row in self.ROW_RANGE:
             raise IndexError("Rank out of bounds!")
-        if not col in range(0, N_FILES):
+        if not col in self.COL_RANGE:
             raise IndexError("File out of bounds!")
         self.row = row
         self.col = col
@@ -202,8 +205,8 @@ class Board:
         """
         # Construct board
         if board is None:
-            self.board = [ [ None for _ in range(N_FILES) ]
-                                  for _ in range(N_RANKS)
+            self.board = [ [ None for _ in Square.COL_RANGE ]
+                                  for _ in Square.ROW_RANGE
                                   ]
         else:
             self.board = board
@@ -422,22 +425,18 @@ class Board:
                 return False
         return True
 
-    def valid_castles(self, king=None):
+    def valid_castles(self, king):
         """
-        Return a list of valid castling moves for the current player.
+        Return a list of valid castling moves for the input king.
         """
-        # Get king if king is not passed in
-        if king is None:
-            king = self.find_king()
-        elif not isinstance(king, King):
-            raise TypeError("valid_castles king must be a King or None!")
-        # Build list of castle moves
         moves = [ ]
+        # Check queen side
         qrook = self[ self.qr_home[king.color] ]
         if isinstance(qrook, Rook):
             if self.castle_states[king.color]["Q"]:
                 if self.verify_castle(king, qrook):
                     moves.append(Square(king.row, king.col - 2))
+        # Check king side
         krook = self[ self.kr_home[king.color] ]
         if isinstance(krook, Rook):
             if self.castle_states[king.color]["K"]:
@@ -459,7 +458,7 @@ class Board:
             if not self.has_attackers(square, FLIP_COLOR[king.color]):
                 moves.append(square)
         # Add castling moves
-        moves.extend(self.valid_castles(king=king))
+        moves.extend(self.valid_castles(king))
         return moves
 
     def valid_targets_pawn(self, pawn):
@@ -468,12 +467,14 @@ class Board:
         normal pawn moves, adds captures.
         """
         moves = [ ]
+        # Normal moves
         for row, col in pawn.pseudovalid_coords_regular():
             target = self.board[row][col]
             if target is None:
                 moves.append(self.get_square(row, col))
             else:
                 break
+        # Captures and en passant
         for row, col in pawn.pseudovalid_coords_capture():
             target = self.board[row][col]
             square = self.get_square(row, col)
@@ -491,18 +492,18 @@ class Board:
         """
         moves = [ ]
         for row, col in piece.pseudovalid_coords():
-            try:
-                # Check for target validity
-                target = self.board[row][col]
-                if isinstance(target, Piece) and target.color == piece.color:
-                    continue
-                # Check for obstructions
-                square = self.get_square(row, col)
-                if not piece.jumps:
-                    if self.obstruction(piece.square, square):
-                        continue
-            except IndexError:
+            # Check if out of bounds
+            if not row in Square.ROW_RANGE or not col in Square.COL_RANGE:
                 continue
+            # Check for target validity
+            target = self.board[row][col]
+            if isinstance(target, Piece) and target.color == piece.color:
+                continue
+            # Check for obstructions
+            square = self.get_square(row, col)
+            if not piece.jumps:
+                if self.obstruction(piece.square, square):
+                    continue
             moves.append(square)
         return moves
 
@@ -914,7 +915,7 @@ class Board:
             edge_line =  "+" + "---+" * N_FILES + "\n"
             piece_line = "|" + "{}|" * N_FILES + "\n"
             self._board_fmt_str = edge_line
-            for r in range(0, N_RANKS):
+            for r in Square.ROW_RANGE:
                 self._board_fmt_str += piece_line + edge_line
         return self._board_fmt_str
 
@@ -1509,13 +1510,10 @@ class Queen(Piece):
         """
         Generate all squares that the piece could potentially move to.
         """
-        # ROOK
-        for coord in self.generate_col():
-            yield coord
-        for coord in self.generate_row():
-            yield coord
-        # BISHOP
-        for coord in self.generate_diag():
+        chained = itertools.chain( self.generate_col(), 
+                                   self.generate_row(), 
+                                   self.generate_diag() )
+        for coord in chained:
             yield coord
 
     @staticmethod
@@ -1541,12 +1539,10 @@ class King(Piece):
     def pseudovalid_coords(self):
         """
         Generate all squares that the piece could potentially move to.
+        (Excludes castles)
         """
         for d_row, d_col in itertools.product([1, 0, -1], [1, 0, -1]):
             yield self.row + d_row, self.col + d_col
-        if not self.has_moved:
-            yield self.row, self.col + 2
-            yield self.row, self.col - 2
 
     @staticmethod
     def move_is_valid(d_row, d_col, castle=False, pseudovalid=False, **kwargs):
