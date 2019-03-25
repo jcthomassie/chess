@@ -76,6 +76,10 @@ class Square:
             self._rank = self.row_to_rank(self.row)
         return self._rank
 
+    @property
+    def coord(self):
+        return self.row, self.col
+
     @classmethod
     def from_str(cls, pos_str):
         """
@@ -323,48 +327,49 @@ class Board:
                 elif color is None or piece.color == color:
                     yield piece
 
-    def coord_slice(self, from_square, to_square):
+    def coord_slice(self, row_0, col_0, row_1, col_1):
         """
         Generator that yields the squares on the board between from_square and
         to_square, inclusive. Only works for square/diagonal displacements.
         """
-        d_row, d_col = to_square - from_square
+        d_row = row_1 - row_0
+        d_col = col_1 - col_0
         # VERTICAL
         if d_col == 0:
-            dr = (1, -1)[to_square.row < from_square.row] # sign of row change
-            for row in range(from_square.row, to_square.row + dr, dr):
-                yield row, from_square.col
+            dr = (1, -1)[row_1 < row_0] # sign of row change
+            for row in range(row_0, row_1 + dr, dr):
+                yield row, col_0
         # HORIZONTAL
         elif d_row == 0:
-            dc = (1, -1)[to_square.col < from_square.col] # sign of col change
-            for col in range(from_square.col, to_square.col + dc, dc):
-                yield from_square.row, col
+            dc = (1, -1)[col_1 < col_0] # sign of col change
+            for col in range(col_0, col_1 + dc, dc):
+                yield row_0, col
         # DIAGONAL
         elif abs( d_row ) == abs( d_col ):
             dr = (1, -1)[d_row < 0] # sign of row change
             dc = (1, -1)[d_col < 0] # sign of col change
             r_to_c = dr * dc # 1 if same, -1 if opposite
             for r in range(0, d_row + dr, dr):
-                row = from_square.row + r
-                col = from_square.col + r * r_to_c
+                row = row_0 + r
+                col = col_0 + r * r_to_c
                 yield row, col
         else:
             raise IndexError("Slices must be square or diagonal!")
 
-    def square_slice(self, from_square, to_square):
+    def square_slice(self, row_0, col_0, row_1, col_1):
         """
         Generator that yields the squares on the board between from_square and
         to_square, inclusive. Only works for square/diagonal displacements.
         """
-        for row, col in self.coord_slice(from_square, to_square):
+        for row, col in self.coord_slice(row_0, col_0, row_1, col_1):
             yield self.get_square(row, col)
 
-    def piece_slice(self, from_square, to_square):
+    def piece_slice(self, row_0, col_0, row_1, col_1):
         """
         Generator that yields pieces on the board from_square to_square,
         inclusive. Only works for square/diagonal displacements.
         """
-        for row, col in self.coord_slice(from_square, to_square):
+        for row, col in self.coord_slice(row_0, col_0, row_1, col_1):
             yield self.board[row][col]
 
     def find_pieces(self, piece_type, color):
@@ -382,7 +387,7 @@ class Board:
         Return True if there is a piece between the two squares.
         Return False if the path is clear.
         """
-        pieces = list(self.piece_slice(from_square, to_square))[1:-1]
+        pieces = list(self.piece_slice(*from_square.coord, *to_square.coord))[1:-1]
         if any(pieces):
             return True
         return False
@@ -393,17 +398,13 @@ class Board:
         Return False otherwise
         """
         for piece in self.piece_generator(color=color):
-            # Check for null move
-            if square == piece.square:
-                continue
             # Check if move is valid for piece
             d_row, d_col = square - piece.square
             if not piece.move_is_valid(d_row, d_col, capture=True):
                 continue
             # Check for obstructions
-            elif not piece.jumps:
-                if self.obstruction(piece.square, square):
-                    continue
+            elif not piece.jumps and self.obstruction(piece.square, square):
+                continue
             return True
         return False
 
@@ -415,7 +416,7 @@ class Board:
         if self.obstruction(king.square, rook.square):
             return False
         # Make sure king doesn't cross through check (include current square)
-        path = list(self.square_slice(king.square, rook.square))[:3]
+        path = list(self.square_slice(*king.coord, *rook.coord))[:3]
         for square in path:
             if self.has_attackers(square, FLIP_COLOR[king.color]):
                 return False
@@ -490,19 +491,18 @@ class Board:
         """
         moves = [ ]
         for row, col in piece.pseudovalid_coords():
-            if row < 0 or row > N_RANKS - 1:
-                continue
-            if col < 0 or col > N_FILES - 1:
-                continue
-            square = self.get_square(row, col)
-            # Check for target validity
-            target = self.board[row][col]
-            if isinstance(target, Piece) and target.color == piece.color:
-                continue
-            # Check for obstructions
-            elif not piece.jumps:
-                if self.obstruction(piece.square, square):
+            try:
+                # Check for target validity
+                target = self.board[row][col]
+                if isinstance(target, Piece) and target.color == piece.color:
                     continue
+                # Check for obstructions
+                square = self.get_square(row, col)
+                if not piece.jumps:
+                    if self.obstruction(piece.square, square):
+                        continue
+            except IndexError:
+                continue
             moves.append(square)
         return moves
 
@@ -552,23 +552,14 @@ class Board:
                 cleaned[from_square] = cleaned_targets
         return cleaned
 
-    def king_attacked(self, color):
-        """
-        Return True if current player is in check.
-        Return False otherwise.
-        """
-        king = self.find_king(color=color)
-        if self.has_attackers(king.square, FLIP_COLOR[king.color]):
-            return True
-        return False
-
     @property
     def check(self):
         """
         Update the current check state.
         """
         if self._last_check_recompute != len(self.move_history):
-            self._check = self.king_attacked(self.to_move)
+            king = self.find_king(color=self.to_move)
+            self._check = self.has_attackers(king.square, FLIP_COLOR[king.color])
             self._last_check_recompute = len(self.move_history)
         return self._check
 
@@ -1292,6 +1283,10 @@ class Piece:
     @property
     def col(self):
         return self.square.col
+
+    @property
+    def coord(self):
+        return self.square.coord
 
     @property
     def rank(self):
