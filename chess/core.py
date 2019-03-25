@@ -323,7 +323,7 @@ class Board:
                 elif color is None or piece.color == color:
                     yield piece
 
-    def square_slice(self, from_square, to_square):
+    def coord_slice(self, from_square, to_square):
         """
         Generator that yields the squares on the board between from_square and
         to_square, inclusive. Only works for square/diagonal displacements.
@@ -333,12 +333,12 @@ class Board:
         if d_col == 0:
             dr = (1, -1)[to_square.row < from_square.row] # sign of row change
             for row in range(from_square.row, to_square.row + dr, dr):
-                yield self.get_square(row, from_square.col)
+                yield row, from_square.col
         # HORIZONTAL
         elif d_row == 0:
             dc = (1, -1)[to_square.col < from_square.col] # sign of col change
             for col in range(from_square.col, to_square.col + dc, dc):
-                yield self.get_square(from_square.row, col)
+                yield from_square.row, col
         # DIAGONAL
         elif abs( d_row ) == abs( d_col ):
             dr = (1, -1)[d_row < 0] # sign of row change
@@ -347,17 +347,25 @@ class Board:
             for r in range(0, d_row + dr, dr):
                 row = from_square.row + r
                 col = from_square.col + r * r_to_c
-                yield self.get_square(row, col)
+                yield row, col
         else:
             raise IndexError("Slices must be square or diagonal!")
+
+    def square_slice(self, from_square, to_square):
+        """
+        Generator that yields the squares on the board between from_square and
+        to_square, inclusive. Only works for square/diagonal displacements.
+        """
+        for row, col in self.coord_slice(from_square, to_square):
+            yield self.get_square(row, col)
 
     def piece_slice(self, from_square, to_square):
         """
         Generator that yields pieces on the board from_square to_square,
         inclusive. Only works for square/diagonal displacements.
         """
-        for square in self.square_slice(from_square, to_square):
-            yield self.board[square.row][square.col]
+        for row, col in self.coord_slice(from_square, to_square):
+            yield self.board[row][col]
 
     def find_pieces(self, piece_type, color):
         """
