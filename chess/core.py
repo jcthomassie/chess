@@ -385,8 +385,18 @@ class Board:
         Return False otherwise
         """
         for piece in self.piece_generator(color=color):
-            if self.valid_square_piece(piece, square, recaptures=True):
-                return True
+            # Check for null move
+            if square == piece.square:
+                continue
+            # Check if move is valid for piece
+            d_row, d_col = square - piece.square
+            if not piece.move_is_valid(d_row, d_col, capture=True):
+                continue
+            # Check for obstructions
+            elif not piece.jumps:
+                if self.obstruction(piece.square, square):
+                    continue
+            return True
         return False
 
     def verify_castle(self, king, rook):
@@ -463,34 +473,6 @@ class Board:
             elif square == self.en_passant_square:
                 moves.append(square)
         return moves
-
-    def valid_square_piece(self, piece, square, recaptures=False, pseudovalid=False):
-        """
-        Return True if piece can move to square.
-        Return False otherwise.
-        If recaptures is True, includes squares that are occupied by a piece
-        of the same color.
-        """
-        # Check for null move
-        if square == piece.square:
-            return False
-        # Check for target validity
-        target = self.board[square.row][square.col]
-        if target is None:
-            capture = False
-        elif target.color != piece.color or recaptures:
-            capture = True
-        else:
-            return False
-        # Check if move is valid for piece
-        d_row, d_col = square - piece.square
-        if not piece.move_is_valid(d_row, d_col, capture=(capture or recaptures), pseudovalid=pseudovalid):
-            return False
-        # Check for obstructions
-        elif not piece.jumps:
-            if self.obstruction(piece.square, square):
-                return False
-        return True
 
     def valid_targets_piece(self, piece):
         """
