@@ -427,51 +427,46 @@ class Board:
 
     def valid_castles(self, king):
         """
-        Return a list of valid castling moves for the input king.
+        Yield valid castling moves for the input king.
         """
-        moves = [ ]
         # Check queen side
         qrook = self[ self.qr_home[king.color] ]
         if isinstance(qrook, Rook):
             if self.castle_states[king.color]["Q"]:
                 if self.verify_castle(king, qrook):
-                    moves.append(Square(king.row, king.col - 2))
+                    yield self.get_square(king.row, king.col - 2)
         # Check king side
         krook = self[ self.kr_home[king.color] ]
         if isinstance(krook, Rook):
             if self.castle_states[king.color]["K"]:
                 if self.verify_castle(king, krook):
-                    moves.append(Square(king.row, king.col + 2))
-
-        return moves
+                    yield self.get_square(king.row, king.col + 2)
 
     def valid_targets_king(self, king):
         """
-        Return a list of all valid target squares for a king. Gets list of
+        Yield all valid target squares for a king. Gets list of
         normal king moves, removes moves that leave the king in check, and adds
         valid castling moves.
         """
-        moves = [ ]
         # Normal moves
         for square in self.valid_targets_piece(king):
             # Keep moves that do not result in check
             if not self.has_attackers(square, FLIP_COLOR[king.color]):
-                moves.append(square)
-        # Add castling moves
-        moves.extend(self.valid_castles(king))
-        return moves
+                yield square
+        # Castling moves
+        for square in self.valid_castles(king):
+            yield square
 
     def valid_targets_pawn(self, pawn):
         """
-        Return a list of all valid target squares for a pawn. Gets list of
+        Yield all valid target squares for a pawn. Gets list of
         normal pawn moves, adds captures.
         """
-        moves = [ ]
         # Normal moves
         for row, col in pawn.pseudovalid_coords_regular():
             target = self.board[row][col]
             if target is None:
-                moves.append(self.get_square(row, col))
+                yield self.get_square(row, col)
             else:
                 break
         # Captures and en passant
@@ -479,18 +474,16 @@ class Board:
             target = self.board[row][col]
             square = self.get_square(row, col)
             if isinstance(target, Piece) and target.color != pawn.color:
-                moves.append(square)
+                yield square
             elif square == self.en_passant_square:
-                moves.append(square)
-        return moves
+                yield square
 
     def valid_targets_piece(self, piece):
         """
-        Return a list of all valid target squares for the specified piece.
+        Yield all valid target squares for the specified piece.
         Does not consider whether a move leaves player in check,
         does not consider castling, does not consider en passant.
         """
-        moves = [ ]
         for row, col in piece.pseudovalid_coords():
             # Check if out of bounds
             if not row in Square.ROW_RANGE or not col in Square.COL_RANGE:
@@ -504,8 +497,7 @@ class Board:
             if not piece.jumps:
                 if self.obstruction(piece.square, square):
                     continue
-            moves.append(square)
-        return moves
+            yield square
 
     def valid_moves_all(self, remove_checks=True):
         """
@@ -515,11 +507,11 @@ class Board:
         move_lookup = dict( )
         for piece in self.piece_generator(color=self.to_move):
             if isinstance(piece, Pawn):
-                piece_targets = self.valid_targets_pawn(piece)
+                piece_targets = list( self.valid_targets_pawn(piece) )
             elif isinstance(piece, King):
-                piece_targets = self.valid_targets_king(piece)
+                piece_targets = list( self.valid_targets_king(piece) )
             else:
-                piece_targets = self.valid_targets_piece(piece)
+                piece_targets = list( self.valid_targets_piece(piece) )
 
             if len(piece_targets) > 0:
                 move_lookup[piece.square] = piece_targets
