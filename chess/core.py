@@ -534,6 +534,7 @@ class Board:
         """
         cleaned = dict( )
         color = self.to_move
+        king_square = self.find_king(color=color).square
         for from_square, targets in move_lookup.items():
             cleaned_targets = [ ]
             for to_square in targets:
@@ -541,7 +542,9 @@ class Board:
                 move = Move.from_squares(from_square, to_square, self, validate=False)
                 self.push_move(move)
                 # Keep the move if it does not cause check
-                if not self.king_attacked(color=color):
+                if from_square == king_square and not self.has_attackers(to_square, FLIP_COLOR[color]):
+                    cleaned_targets.append(to_square)
+                elif not self.has_attackers(king_square, FLIP_COLOR[color]):
                     cleaned_targets.append(to_square)
                 # Reset for next test
                 self.undo_move()
