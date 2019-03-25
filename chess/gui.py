@@ -11,7 +11,7 @@ WHITE_RGB = (240, 217, 181) # tan
 BG_RGB = (0, 0, 0) # black
 
 TARGET_RGB = (132, 132, 132) # grey
-CHECK_RGB = () # red
+CHECK_RGB = (255, 68, 68) # red
 ARROW_RGB = () # green
 
 # GEOMETRY
@@ -115,6 +115,11 @@ class Game:
         self.latched = None
         return
 
+    def draw_square_highlight(self, square, color):
+        corner = square_corner(square.row, square.col)
+        rect = (*corner, SQUARE_PIX, SQUARE_PIX)
+        pygame.draw.rect(self.screen, color, rect)
+
     def draw_corner_highlight(self, square):
         corner = square_corner(square.row, square.col)
         for dx, dy in itertools.permutations([-1, -1, 1, 1], 2):
@@ -126,10 +131,11 @@ class Game:
             p1 = [p0[0] - dx * 14, p0[1]]
             p2 = [p0[0], p0[1] - dy * 14]
             pygame.draw.polygon(self.screen, TARGET_RGB, [p0, p1, p2])
+            pygame.draw.aaline(self.screen, TARGET_RGB, p1, p2)
 
     def draw_target_dot(self, square):
         coord = square_center(square.row, square.col)
-        radius = SQUARE_PIX // 8
+        radius = 9
         gfxdraw.aacircle(self.screen, *coord, radius, TARGET_RGB)
         gfxdraw.filled_circle(self.screen, *coord, radius, TARGET_RGB)
 
@@ -156,7 +162,7 @@ class Game:
                     self.draw_corner_highlight(target)
         return
 
-    def start_move(self, event):
+    def grab(self, event):
         """
         Mouse down event.
         """
@@ -170,6 +176,11 @@ class Game:
                 self.latched = piece
         return
 
+    def drop(self):
+        if isinstance(self.latched, PieceIcon):
+            self.latched.snap_to_square()
+            self.latched = None
+
     def finish_move(self, event):
         """
         Mouse up event.
@@ -178,8 +189,7 @@ class Game:
             from_square = self.latched.square
             to_square = self.latched.nearest_square()
             self.attempt_move(from_square, to_square)
-            self.latched.snap_to_square()
-        self.latched = None
+        self.drop()
         return
 
     def move_sprites(self, move):
@@ -222,7 +232,10 @@ class Game:
                 if event.type == pygame.QUIT:
                     game_exit = True
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    self.start_move(event)
+                    if self.latched is None:
+                        self.grab(event)
+                    else:
+                        self.drop()
                 elif event.type == pygame.MOUSEBUTTONUP:
                     self.finish_move(event)
                 elif event.type == pygame.KEYDOWN:
@@ -232,6 +245,8 @@ class Game:
             # Draw board
             self.screen.fill(BG_RGB)
             self.screen.blit(self.board_icon, (MARGIN_PIX, MARGIN_PIX))
+            if self.board.check:
+                self.draw_square_highlight(self.board.find_king().square, CHECK_RGB)
 
             # Update and draw pieces
             if isinstance(self.latched, PieceIcon):
