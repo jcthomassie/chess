@@ -46,7 +46,7 @@ class Square:
     """
     ROW_RANGE = range(N_RANKS)
     COL_RANGE = range(N_FILES)
-    
+
     def __init__(self, row, col, rank=None, file=None):
         """
         Takes row and col coordinates as input.
@@ -188,6 +188,8 @@ class Board:
         "Mate"     : "8/8/1Kn5/3k4/4Q3/6N1/8/8 b KQkq - 0 1",
         "Castle"   : "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
         "PTest"    : "1r2qkb1/p5pp/4pp2/B2QQN1N/2R4/PP6/2P5/4K3 b KQkq - 0 1",
+        "Custom"   : "rnbqkbnr/pppccppp/8/8/8/8/PPPCCPPP/RNBQKBNR"\
+                     " w KQkq - 0 1",
             }
 
     def __init__(self, fen="Standard", board=None):
@@ -214,10 +216,10 @@ class Board:
         self.move_history = [ ]
         self.castle_states = { WHITE : { "Q": True, "K": True },
                                BLACK : { "Q": True, "K": True }, }
-        self.qr_home = { WHITE: Square(N_RANKS - 1, 0),
-                         BLACK: Square(0, 0), }
-        self.kr_home = { WHITE: Square(N_RANKS - 1, N_FILES - 1),
-                         BLACK: Square(0, N_FILES - 1), }
+        self.rook_homes = { WHITE: [ Square(N_RANKS - 1, 0),
+                                     Square(N_RANKS - 1, N_FILES - 1) ],
+                            BLACK: [ Square(0, 0),
+                                     Square(0, N_FILES - 1) ], }
         self.en_passant_square = None
 
         self.to_move = to_move
@@ -377,13 +379,11 @@ class Board:
 
     def find_pieces(self, piece_type, color):
         """
-        Returns list of pieces of the specified type and color from the board.
+        Yields pieces of the specified type and color from the board.
         """
-        found = [ ]
         for piece in self.piece_generator(color=color):
             if isinstance(piece, piece_type):
-                found.append(piece)
-        return found
+                yield piece
 
     def obstruction(self, from_square, to_square):
         """
@@ -430,17 +430,12 @@ class Board:
         Yield valid castling moves for the input king.
         """
         # Check queen side
-        qrook = self[ self.qr_home[king.color] ]
-        if isinstance(qrook, Rook):
-            if self.castle_states[king.color]["Q"]:
-                if self.verify_castle(king, qrook):
-                    yield self.get_square(king.row, king.col - 2)
-        # Check king side
-        krook = self[ self.kr_home[king.color] ]
-        if isinstance(krook, Rook):
-            if self.castle_states[king.color]["K"]:
-                if self.verify_castle(king, krook):
-                    yield self.get_square(king.row, king.col + 2)
+        for square, side, d_col in zip(self.rook_homes[king.color], ("Q", "K"), (-2, 2)):
+            rook = self[ square ]
+            if isinstance(rook, Rook):
+                if self.castle_states[king.color][side]:
+                    if self.verify_castle(king, rook):
+                        yield self.get_square(king.row, king.col + d_col)
 
     def valid_targets_king(self, king):
         """
@@ -518,7 +513,7 @@ class Board:
             if len(cleaned) > 0:
                 move_lookup[piece.square] = cleaned
         return move_lookup
-    
+
     def remove_checks(self, from_square, target_list, king_square, color):
         """
         Step through a target list for a piece. Yield any squares that do not
@@ -627,7 +622,7 @@ class Board:
         if color is None:
             color = self.to_move
         # Get list of kings for current player
-        king_list = self.find_pieces(King, color)
+        king_list = list( self.find_pieces(King, color) )
         if len(king_list) == 0:
             raise InvalidBoardError("{} has no king!".format(COLOR_NAME[color]))
         elif len(king_list) > 1:
@@ -1072,13 +1067,13 @@ class Move:
             d_col = to_square.col - from_square.col
             # King side castle
             if d_col == 2:
-                rook = board[ board.kr_home[piece.color] ]
+                rook = board[ board.rook_homes[piece.color][1] ]
                 rook_to = Square( to_square.row, to_square.col - 1 )
                 additions.append( Rook(rook_to, rook.color, has_moved=True) )
                 removals.append( rook )
             # Queen side castle
             elif d_col == -2:
-                rook = board[ board.qr_home[piece.color] ]
+                rook = board[ board.rook_homes[piece.color][0] ]
                 rook_to = Square( to_square.row, to_square.col + 1 )
                 additions.append( Rook(rook_to, rook.color, has_moved=True) )
                 removals.append( rook )
@@ -1089,10 +1084,10 @@ class Move:
                 castle_updates.append(("K", False))
         # Rook moves prevent future castles with that rook
         elif isinstance(piece, Rook):
-            if from_square == board.qr_home[piece.color]:
+            if from_square == board.rook_homes[piece.color][0]:
                 if board.castle_states[piece.color]["Q"]:
                     castle_updates.append(("Q", False))
-            elif from_square == board.kr_home[piece.color]:
+            elif from_square == board.rook_homes[piece.color][1]:
                 if board.castle_states[piece.color]["K"]:
                     castle_updates.append(("K", False))
 
@@ -1261,6 +1256,8 @@ class Piece:
             return Queen((row, col), color=color)
         elif piece_upper == "K":
             return King((row, col), color=color)
+        elif piece_upper == "C":
+            return Centaur((row, col), color=color)
         else:
             raise ValueError("Unrecognized piece string: {}".format(piece_char))
 
@@ -1493,8 +1490,8 @@ class Queen(Piece):
         """
         Generate all squares that the piece could potentially move to.
         """
-        chained = itertools.chain( self.generate_col(), 
-                                   self.generate_row(), 
+        chained = itertools.chain( self.generate_col(),
+                                   self.generate_row(),
                                    self.generate_diag() )
         for coord in chained:
             yield coord
@@ -1545,6 +1542,46 @@ class King(Piece):
                 return True
             else:
                 return False
+
+class Centaur(Piece):
+    value = 5
+    jumps = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+    def pseudovalid_coords(self):
+        """
+        Generate all squares that the piece could potentially move to.
+        (Excludes castles)
+        """
+        # KING
+        for d_row, d_col in itertools.product([1, 0, -1], [1, 0, -1]):
+            yield self.row + d_row, self.col + d_col
+        # KNIGHT
+        for d_row, d_col in itertools.permutations([2, 1]):
+            for s_row, s_col in itertools.product([1, -1], repeat=2):
+                row = self.row + d_row*s_row
+                if not 0 <= row < N_RANKS:
+                    continue
+                col = self.col + d_col*s_col
+                if not 0 <= col < N_FILES:
+                    continue
+                yield row, col
+
+    @staticmethod
+    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
+        """
+        Can move 1 square any direction, or diagonally
+        """
+        if pseudovalid:
+            return True
+        if set(( abs(d_col), abs(d_row) )).issubset( set(( 0, 1 )) ) or \
+           set(( abs(d_col), abs(d_row) )).issubset( set(( 1, 2 )) ):
+            return True
+        else:
+            return False
 
 ###############################################################################
 #  MAIN                                                                       #
