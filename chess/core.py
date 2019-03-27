@@ -188,7 +188,7 @@ class Board:
         "Mate"     : "8/8/1Kn5/3k4/4Q3/6N1/8/8 b KQkq - 0 1",
         "Castle"   : "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
         "PTest"    : "1r2qkb1/p5pp/4pp2/B2QQN1N/2R4/PP6/2P5/4K3 b KQkq - 0 1",
-        "Custom"   : "rnbqkbnr/pppccppp/8/8/8/8/PPPCCPPP/RNBQKBNR"\
+        "Custom"   : "rzbqkbgr/pppppppp/8/8/8/8/PPPPPPPP/RZBQKBGR"\
                      " w KQkq - 0 1",
             }
 
@@ -1258,6 +1258,10 @@ class Piece:
             return King((row, col), color=color)
         elif piece_upper == "C":
             return Centaur((row, col), color=color)
+        elif piece_upper == "Z":
+            return Zebra((row, col), color=color)
+        elif piece_upper == "G":
+            return Giraffe((row, col), color=color)
         else:
             raise ValueError("Unrecognized piece string: {}".format(piece_char))
 
@@ -1578,7 +1582,77 @@ class Centaur(Piece):
         if pseudovalid:
             return True
         if set(( abs(d_col), abs(d_row) )).issubset( set(( 0, 1 )) ) or \
-           set(( abs(d_col), abs(d_row) )).issubset( set(( 1, 2 )) ):
+           set(( abs(d_col), abs(d_row) )) == set(( 1, 2 )):
+            return True
+        else:
+            return False
+
+class Zebra(Piece):
+    value = 5
+    jumps = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+    def pseudovalid_coords(self):
+        """
+        Generate all squares that the piece could potentially move to.
+        (Excludes castles)
+        """
+        for d_row, d_col in itertools.permutations([2, 3]):
+            for s_row, s_col in itertools.product([1, -1], repeat=2):
+                row = self.row + d_row*s_row
+                if not 0 <= row < N_RANKS:
+                    continue
+                col = self.col + d_col*s_col
+                if not 0 <= col < N_FILES:
+                    continue
+                yield row, col
+
+    @staticmethod
+    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
+        """
+        Can move 1 square any direction, or diagonally
+        """
+        if pseudovalid:
+            return True
+        if set(( abs(d_col), abs(d_row) )) == set(( 2, 3 )):
+            return True
+        else:
+            return False
+
+class Giraffe(Piece):
+    value = 5
+    jumps = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+    def pseudovalid_coords(self):
+        """
+        Generate all squares that the piece could potentially move to.
+        (Excludes castles)
+        """
+        for d_row, d_col in itertools.permutations([4, 1]):
+            for s_row, s_col in itertools.product([1, -1], repeat=2):
+                row = self.row + d_row*s_row
+                if not 0 <= row < N_RANKS:
+                    continue
+                col = self.col + d_col*s_col
+                if not 0 <= col < N_FILES:
+                    continue
+                yield row, col
+
+    @staticmethod
+    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
+        """
+        Can move 1 square any direction, or diagonally
+        """
+        if pseudovalid:
+            return True
+        if set(( abs(d_col), abs(d_row) )) == set(( 4, 1 )):
             return True
         else:
             return False
