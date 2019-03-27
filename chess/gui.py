@@ -43,6 +43,9 @@ def pix_to_square(x, y, flipped=False):
     else:
         row = core.N_RANKS - 1 - ( y - MARGIN_PIX ) // SQUARE_PIX
         col = core.N_FILES - 1 - ( x - MARGIN_PIX ) // SQUARE_PIX
+    # Restrict to board
+    row = min( max(row, 0), core.N_RANKS - 1 )
+    col = min( max(col, 0), core.N_FILES - 1 )
     return core.Square(row, col)
 
 class PieceIcon(pygame.sprite.Sprite):
@@ -227,6 +230,7 @@ class Game:
             move = core.Move.from_squares(from_square, to_square, self.board)
             self.board.push_move(move)
             self.move_sprites(move)
+            self.flip_board(color=self.board.to_move)
         except:
             pass
         return
@@ -237,10 +241,21 @@ class Game:
             self.move_sprites(last_move.inverse())
             self.board.undo_move()
 
+    def flip_board(self, color=None):
+        if color == core.WHITE:
+            self.flipped = False
+        elif color == core.BLACK:
+            self.flipped = True
+        else:
+            self.flipped = not self.flipped
+        for piece in self.sprites:
+            piece.snap_to_square(flipped=self.flipped)
+
     def loop(self):
         """
         Run the game loop
         """
+        game_clock = pygame.time.Clock()
         game_exit = False
         while not game_exit:
             # Process events
@@ -258,9 +273,7 @@ class Game:
                     if event.key == pygame.K_u:
                         self.undo_move()
                     if event.key == pygame.K_f:
-                        self.flipped = not self.flipped
-                        for piece in self.sprites:
-                            piece.snap_to_square(flipped=self.flipped)
+                        self.flip_board()
 
             # Draw board
             self.screen.fill(BG_RGB)
@@ -275,6 +288,7 @@ class Game:
             self.sprites.draw(self.screen)
 
             pygame.display.flip()
+            game_clock.tick(60)
         return
 
     def __enter__(self):
