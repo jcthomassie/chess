@@ -12,7 +12,7 @@ BG_RGB = (0, 0, 0) # black
 
 TARGET_RGB = (49, 175, 80) # pale green
 CHECK_RGB = (255, 68, 68) # red
-ARROW_RGB = () # green
+ARROW_RGB = (49, 175, 80) # green
 
 # GEOMETRY
 SQUARE_PIX = 81 # pixels
@@ -229,6 +229,8 @@ class Game:
         try:
             move = core.Move.from_squares(from_square, to_square, self.board)
             self.board.push_move(move)
+            if self.board.game_over():
+                print("GAME OVER!")
             self.move_sprites(move)
             self.flip_board(color=self.board.to_move)
         except:
@@ -280,6 +282,8 @@ class Game:
             self.screen.blit(self.board_icon, (MARGIN_PIX, MARGIN_PIX))
             if self.board.check:
                 self.draw_square_highlight(self.board.find_king().square, CHECK_RGB)
+            if self.board.winner is not None:
+                self.draw_square_highlight(self.board.find_king(self.board.winner).square, ARROW_RGB)
 
             # Update and draw pieces
             if isinstance(self.latched, PieceIcon):

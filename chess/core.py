@@ -647,6 +647,20 @@ class Board:
             return True
         return False
 
+    def game_over(self):
+        """
+        Return True if game is over...also set winner.
+        Return False otherwise.
+        """
+        if self.checkmate():
+            self.winner = FLIP_COLOR[self.to_move]
+            return True
+        elif self.stalemate():
+            self.winner = DRAW
+            return True
+        else:
+            return False
+
     def evaluate(self):
         """
         Returns the current material point spread.
@@ -713,11 +727,7 @@ class Board:
             self.print_turn_header()
 
             # Game end conditions
-            if self.checkmate():
-                self.winner = FLIP_COLOR[self.to_move]
-                break
-            elif self.stalemate():
-                self.winner = DRAW
+            if self.game_over():
                 break
 
             # Keep trying to move until a move succeeds
