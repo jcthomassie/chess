@@ -188,7 +188,7 @@ class Board:
         "Mate"     : "8/8/1Kn5/3k4/4Q3/6N1/8/8 b KQkq - 0 1",
         "Castle"   : "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
         "PTest"    : "1r2qkb1/p5pp/4pp2/B2QQN1N/2R4/PP6/2P5/4K3 b KQkq - 0 1",
-        "Custom"   : "rzbqkbgr/pppppppp/8/8/8/8/PPPPPPPP/RZBQKBGR"\
+        "Custom"   : "rzbqkbgr/ppeppepp/8/8/8/8/PPEPPEPP/RZBQKBGR"\
                      " w KQkq - 0 1",
             }
 
@@ -1262,6 +1262,8 @@ class Piece:
             return Zebra((row, col), color=color)
         elif piece_upper == "G":
             return Giraffe((row, col), color=color)
+        elif piece_upper == "E":
+            return Elephant((row, col), color=color)
         else:
             raise ValueError("Unrecognized piece string: {}".format(piece_char))
 
@@ -1588,7 +1590,7 @@ class Centaur(Piece):
             return False
 
 class Zebra(Piece):
-    value = 5
+    value = 3
     jumps = True
 
     def __init__(self, *args, **kwargs):
@@ -1623,7 +1625,7 @@ class Zebra(Piece):
             return False
 
 class Giraffe(Piece):
-    value = 5
+    value = 2
     jumps = True
 
     def __init__(self, *args, **kwargs):
@@ -1653,6 +1655,37 @@ class Giraffe(Piece):
         if pseudovalid:
             return True
         if set(( abs(d_col), abs(d_row) )) == set(( 4, 1 )):
+            return True
+        else:
+            return False
+
+class Elephant(Piece):
+    value = 2
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.unit = COLOR_ORIENTATION[self.color]
+
+    def pseudovalid_coords(self):
+        """
+        Generate all squares that the piece could potentially move to (non-captures)
+        """
+        yield self.row + self.unit, self.col
+        yield self.row + 1, self.col + 1
+        yield self.row + 1, self.col - 1
+        yield self.row - 1, self.col + 1
+        yield self.row - 1, self.col - 1
+
+    def move_is_valid(self, d_row, d_col, capture=False, **kwargs):
+        """
+        Can move forward 2 if it has not yet moved. Otherwise can only move 1.
+        If the move is a capture, it can move diagonally
+        """
+        # Allow forward moves by 1
+        if d_col == 0 and ( self.unit * d_row == 1  ):
+            return True
+        # Diagonal moves
+        elif abs(d_col) == abs(d_row) == 1:
             return True
         else:
             return False
