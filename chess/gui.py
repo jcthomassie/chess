@@ -10,7 +10,7 @@ BLACK_RGB = (181, 136, 99) # brown
 WHITE_RGB = (240, 217, 181) # tan
 BG_RGB = (0, 0, 0) # black
 
-TARGET_RGB = (132, 132, 132) # grey
+TARGET_RGB = (49, 175, 80) # pale green
 CHECK_RGB = (255, 68, 68) # red
 ARROW_RGB = () # green
 
@@ -18,21 +18,38 @@ ARROW_RGB = () # green
 SQUARE_PIX = 81 # pixels
 MARGIN_PIX = 10 # pixels
 
-def square_center(row, col):
-    x = MARGIN_PIX + (col + 1/2) * SQUARE_PIX
-    y = MARGIN_PIX + (row + 1/2) * SQUARE_PIX
+def square_center(row, col, flipped=False):
+    if not flipped:
+        x = MARGIN_PIX + (col + 1/2) * SQUARE_PIX
+        y = MARGIN_PIX + (row + 1/2) * SQUARE_PIX
+    else:
+        x = MARGIN_PIX + ((core.N_FILES - 1 - col) + 1/2) * SQUARE_PIX
+        y = MARGIN_PIX + ((core.N_RANKS - 1 - row) + 1/2) * SQUARE_PIX
     return round(x), round(y)
 
-def square_corner(row, col):
-    x = MARGIN_PIX + col * SQUARE_PIX
-    y = MARGIN_PIX + row * SQUARE_PIX
+def square_corner(row, col, flipped=False):
+    if not flipped:
+        x = MARGIN_PIX + col * SQUARE_PIX
+        y = MARGIN_PIX + row * SQUARE_PIX
+    else:
+        x = MARGIN_PIX + (core.N_FILES - 1 - col) * SQUARE_PIX
+        y = MARGIN_PIX + (core.N_RANKS - 1 - row) * SQUARE_PIX
     return x, y
+
+def pix_to_square(x, y, flipped=False):
+    if not flipped:
+        row = ( y - MARGIN_PIX ) // SQUARE_PIX
+        col = ( x - MARGIN_PIX ) // SQUARE_PIX
+    else:
+        row = core.N_RANKS - 1 - ( y - MARGIN_PIX ) // SQUARE_PIX
+        col = core.N_FILES - 1 - ( x - MARGIN_PIX ) // SQUARE_PIX
+    return core.Square(row, col)
 
 class PieceIcon(pygame.sprite.Sprite):
     """
     Chess piece sprite.
     """
-    def __init__(self, chess_piece):
+    def __init__(self, chess_piece, flipped=False):
         super(PieceIcon, self).__init__()
         im = self.get_image(chess_piece)
         self.image = pygame.transform.smoothscale(im, (SQUARE_PIX, SQUARE_PIX))
@@ -41,7 +58,7 @@ class PieceIcon(pygame.sprite.Sprite):
 
         self.piece_color = chess_piece.color
         self.piece_type = type(chess_piece)
-        self.set_square(chess_piece.square)
+        self.set_square(chess_piece.square, flipped=flipped)
 
     @staticmethod
     def get_image(chess_piece):
@@ -59,18 +76,16 @@ class PieceIcon(pygame.sprite.Sprite):
     def col(self):
         return self.square.col
 
-    def set_square(self, square):
+    def set_square(self, square, flipped=False):
         self.square = square
-        self.snap_to_square()
+        self.snap_to_square(flipped=flipped)
 
-    def snap_to_square(self):
-        self.rect.x = MARGIN_PIX + self.col * SQUARE_PIX
-        self.rect.y = MARGIN_PIX + self.row * SQUARE_PIX
+    def snap_to_square(self, flipped=False):
+        self.rect.x, self.rect.y = square_corner(self.row, self.col, flipped=flipped)
+        return
 
-    def nearest_square(self):
-        row = ( self.rect.centery - MARGIN_PIX ) // SQUARE_PIX
-        col = ( self.rect.centerx - MARGIN_PIX ) // SQUARE_PIX
-        return core.Square(row, col)
+    def nearest_square(self, flipped=False):
+        return pix_to_square(self.rect.centerx, self.rect.centery, flipped=flipped)
 
     def drag(self):
         pos = pygame.mouse.get_pos()
@@ -101,6 +116,7 @@ class Game:
         # Connect board/game engine
         self.board = board
         # Create display
+        self.flipped = False
         board_width = SQUARE_PIX * len(self.board.board[0])
         board_height = SQUARE_PIX * len(self.board.board)
         dimensions = (board_width + 2 * MARGIN_PIX, board_height + 2 * MARGIN_PIX)
@@ -109,19 +125,19 @@ class Game:
         self.board_icon = BoardIcon(board_width, board_height, SQUARE_PIX)
         self.sprites = pygame.sprite.LayeredUpdates()
         for piece in self.board.piece_generator():
-            self.sprites.add( PieceIcon(piece) )
+            self.sprites.add( PieceIcon(piece), flipped=self.flipped )
         self.sprite_lookup = { piece.square: piece for piece in self.sprites.get_sprites_from_layer(0) }
 
         self.latched = None
         return
 
     def draw_square_highlight(self, square, color):
-        corner = square_corner(square.row, square.col)
+        corner = square_corner(square.row, square.col, flipped=self.flipped)
         rect = (*corner, SQUARE_PIX, SQUARE_PIX)
         pygame.draw.rect(self.screen, color, rect)
 
     def draw_corner_highlight(self, square):
-        corner = square_corner(square.row, square.col)
+        corner = square_corner(square.row, square.col, flipped=self.flipped)
         for dx, dy in itertools.product([-1, 1], repeat=2):
             p0 = [corner[0], corner[1]]
             if dx == 1:
@@ -134,7 +150,7 @@ class Game:
             pygame.draw.aaline(self.screen, TARGET_RGB, p1, p2)
 
     def draw_target_dot(self, square):
-        coord = square_center(square.row, square.col)
+        coord = square_center(square.row, square.col, flipped=self.flipped)
         radius = 9
         gfxdraw.aacircle(self.screen, *coord, radius, TARGET_RGB)
         gfxdraw.filled_circle(self.screen, *coord, radius, TARGET_RGB)
@@ -178,7 +194,7 @@ class Game:
 
     def drop(self):
         if isinstance(self.latched, PieceIcon):
-            self.latched.snap_to_square()
+            self.latched.snap_to_square(flipped=self.flipped)
             self.latched = None
 
     def finish_move(self, event):
@@ -187,7 +203,7 @@ class Game:
         """
         if isinstance(self.latched, PieceIcon):
             from_square = self.latched.square
-            to_square = self.latched.nearest_square()
+            to_square = self.latched.nearest_square(flipped=self.flipped)
             self.attempt_move(from_square, to_square)
         self.drop()
         return
@@ -202,7 +218,7 @@ class Game:
             self.sprites.remove(sprite)
             del self.sprite_lookup[piece.square]
         for piece in move.additions:
-            sprite = PieceIcon(piece)
+            sprite = PieceIcon(piece, flipped=self.flipped)
             self.sprites.add( sprite )
             self.sprite_lookup[piece.square] = sprite
 
@@ -241,6 +257,10 @@ class Game:
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_u:
                         self.undo_move()
+                    if event.key == pygame.K_f:
+                        self.flipped = not self.flipped
+                        for piece in self.sprites:
+                            piece.snap_to_square(flipped=self.flipped)
 
             # Draw board
             self.screen.fill(BG_RGB)
