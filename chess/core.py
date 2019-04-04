@@ -1220,7 +1220,7 @@ class Piece:
     Base class for all chess pieces.
     """
     # Class constants
-    jumps = False # True for Knights
+    jumps = False # True for Knight-like pieces
     value = None # Material point value
 
     def __init__(self, locus, color=WHITE, has_moved=False):
@@ -1415,12 +1415,10 @@ class Bishop(Piece):
         return self.generate_diag()
 
     @staticmethod
-    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
+    def move_is_valid(d_row, d_col, **kwargs):
         """
         Rank and file must change by same amount
         """
-        if pseudovalid:
-            return True
         if abs(d_col) == abs(d_row) != 0:
             return True
         else:
@@ -1449,12 +1447,10 @@ class Knight(Piece):
                 yield row, col
 
     @staticmethod
-    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
+    def move_is_valid(d_row, d_col, **kwargs):
         """
         Rank or file must change by 2, the other must change by 1
         """
-        if pseudovalid:
-            return True
         if set(( abs(d_col), abs(d_row) )) == set(( 1, 2 )):
             return True
         else:
@@ -1484,12 +1480,10 @@ class Rook(Piece):
             yield coord
 
     @staticmethod
-    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
+    def move_is_valid(d_row, d_col, **kwargs):
         """
         Rank or file can change any amount, but one must not change
         """
-        if pseudovalid:
-            return True
         if ( d_col == 0 and d_row != 0 ) or ( d_row == 0 and d_col != 0 ):
             return True
         else:
@@ -1513,12 +1507,10 @@ class Queen(Piece):
             yield coord
 
     @staticmethod
-    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
+    def move_is_valid(d_row, d_col, **kwargs):
         """
         Can make any move that is valid for Rook or Bishop
         """
-        if pseudovalid:
-            return True
         if Bishop.move_is_valid(d_col, d_row) or Rook.move_is_valid(d_col, d_row):
             return True
         else:
@@ -1541,12 +1533,10 @@ class King(Piece):
             yield self.row + d_row, self.col + d_col
 
     @staticmethod
-    def move_is_valid(d_row, d_col, castle=False, pseudovalid=False, **kwargs):
+    def move_is_valid(d_row, d_col, castle=False, **kwargs):
         """
         Can move 1 square any direction, or diagonally
         """
-        if pseudovalid:
-            return True
         if castle:
             if abs(d_row) == 0 and abs(d_col) == 2:
                 return True
@@ -1587,12 +1577,10 @@ class Centaur(Piece):
                 yield row, col
 
     @staticmethod
-    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
+    def move_is_valid(d_row, d_col, **kwargs):
         """
         Can move 1 square any direction, or diagonally
         """
-        if pseudovalid:
-            return True
         if set(( abs(d_col), abs(d_row) )).issubset( set(( 0, 1 )) ) or \
            set(( abs(d_col), abs(d_row) )) == set(( 1, 2 )):
             return True
@@ -1623,12 +1611,10 @@ class Zebra(Piece):
                 yield row, col
 
     @staticmethod
-    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
+    def move_is_valid(d_row, d_col, **kwargs):
         """
         Can move 1 square any direction, or diagonally
         """
-        if pseudovalid:
-            return True
         if set(( abs(d_col), abs(d_row) )) == set(( 2, 3 )):
             return True
         else:
@@ -1658,12 +1644,10 @@ class Giraffe(Piece):
                 yield row, col
 
     @staticmethod
-    def move_is_valid(d_row, d_col, pseudovalid=False, **kwargs):
+    def move_is_valid(d_row, d_col, **kwargs):
         """
         Can move 1 square any direction, or diagonally
         """
-        if pseudovalid:
-            return True
         if set(( abs(d_col), abs(d_row) )) == set(( 4, 1 )):
             return True
         else:
