@@ -342,7 +342,7 @@ class Board:
             for piece in row:
                 if piece is None:
                     continue
-                elif color is None or piece.color == color:
+                elif color is None or piece.color is color:
                     yield piece
 
     def coord_slice(self, row_0, col_0, row_1, col_1):
@@ -498,7 +498,7 @@ class Board:
                 continue
             # Check for target validity
             target = self.board[row][col]
-            if isinstance(target, Piece) and target.color == piece.color:
+            if isinstance(target, Piece) and target.color is piece.color:
                 continue
             # Check for obstructions
             square = self.get_square(row, col)
@@ -681,7 +681,7 @@ class Board:
         score = 0
         for piece in self.piece_generator():
             # Add material for WHITE
-            if piece.color == Color.WHITE:
+            if piece.color is Color.WHITE:
                 score += piece.value
             # Subtract material for BLACK
             else:
@@ -752,7 +752,7 @@ class Board:
                     print(e)
 
         print("\n\n    * * * * * * * * * *")
-        if self.winner == Color.DRAW:
+        if self.winner is Color.DRAW:
             print("    *    GAME DRAWN   *")
         else:
             print("    *   {} WINS!   *".format(self.winner.name))
@@ -929,7 +929,7 @@ class Board:
         front of every line when notation is applied. Highlights is a list of
         squares to be wrapped with parentheses.
         """
-        if orient == Color.BLACK:
+        if orient is Color.BLACK:
             reverse = True
         else:
             reverse = False
@@ -1340,7 +1340,7 @@ class Piece:
         Single character representation of piece.
         Uppercase for WHITE, lowercase for BLACK.
         """
-        if self.color == Color.BLACK:
+        if self.color is Color.BLACK:
             letter = self.__class__.__name__[0].lower()
         else:
             letter = self.__class__.__name__[0]
@@ -1466,7 +1466,7 @@ class Knight(Piece):
             return False
 
     def __str__(self):
-        if self.color == Color.BLACK:
+        if self.color is Color.BLACK:
             letter = "n"
         else:
             letter = "N"
