@@ -84,10 +84,6 @@ class Square:
             self._rank = self.row_to_rank(self.row)
         return self._rank
 
-    @property
-    def coord(self):
-        return self.row, self.col
-
     @classmethod
     def from_str(cls, pos_str):
         """
@@ -719,7 +715,7 @@ class Board:
                         self.print_square_moves(sq)
                 # valid moves for a piece
                 elif move_input[1] == "?":
-                    ptype = type(piece_from_str(move_input[0]))
+                    ptype = type(Piece.from_str(move_input[0]))
                     for piece in self.find_pieces(ptype, self.to_move):
                         self.print_square_moves(piece.square)
                 # valid moves for a square
@@ -808,7 +804,7 @@ class Board:
                 # LETTER -- make a piece with it
                 else:
                     col = c + skips
-                    self[(r, col)] = piece_from_str(char, row=r, col=col)
+                    self[(r, col)] = Piece.from_str(char, row=r, col=col)
 
         # Determine whose move
         to_move = fields[1].lower()
@@ -1156,14 +1152,14 @@ class Move:
 
         # Handle PROMOTIONS
         if pgn_str[-1].isalpha():
-            promote_type = type(piece_from_str(pgn_str[-1]))
+            promote_type = type(Piece.from_str(pgn_str[-1]))
             pgn_str = pgn_str[:-1]
         else:
             promote_type = None
 
         # Handle piece type
         if pgn_str[0] == pgn_str[0].upper():
-            ptype = type(piece_from_str(pgn_str[0]))
+            ptype = type(Piece.from_str(pgn_str[0]))
             pgn_str = pgn_str[1:]
         else:
             ptype = Pawn
@@ -1213,7 +1209,7 @@ class Move:
         """
         promote_type = None
         if len(square_str) == 5:
-            promote_type = type(piece_from_str(square_str[-1]))
+            promote_type = type(Piece.from_str(square_str[-1]))
         elif len(square_str) != 4:
             raise InvalidMoveError("Move string must be 4 characters (5 for pawn promotions)!")
 
@@ -1233,6 +1229,8 @@ class Piece:
     jumps = False # True for Knight-like pieces
     value = None # Material point value
 
+    _CHAR_LOOKUP = {}
+
     def __init__(self, locus, color=Color.WHITE, has_moved=False):
         # Core attributes
         self.color = color
@@ -1250,6 +1248,38 @@ class Piece:
         elif isinstance(locus, Pawn):
             self.color = locus.color
             self.square = locus.square
+
+    def __init_subclass__(cls, **kwargs):
+        """
+        Register the class character in the _CHAR_LOOKUP.
+        """
+        super().__init_subclass__(**kwargs)
+        if not hasattr(cls, "_char"):
+            cls._char = cls.__name__[0]
+        if not isinstance(cls._char, str) or len(cls._char) != 1:
+            raise AttributeError("_char must be a single digit string")
+        # Make sure char is not already taken
+        cls._char = cls._char.upper()
+        if cls._char in Piece._CHAR_LOOKUP:
+            raise AttributeError(f"_char for {cls.__name__} is already taken by {Piece._CHAR_LOOKUP[cls._char].__name__}")
+        # Add to the lookup
+        Piece._CHAR_LOOKUP[cls._char] = cls
+
+    @classmethod
+    def from_str(cls, piece_char, row=0, col=0):
+        """
+        Takes a string with 1 letter identifying a piece. Returns that piece.
+        """
+        # Determine color
+        if piece_char.isupper():
+            color = Color.WHITE
+        else:
+            color = Color.BLACK
+        # Determine piece type
+        try:
+            return cls._CHAR_LOOKUP[piece_char.upper()]((row, col), color=color)
+        except KeyError:
+            raise ValueError(f"Unrecognized piece string: {piece_char!r}")
 
     @property
     def row(self):
@@ -1298,10 +1328,9 @@ class Piece:
         Uppercase for WHITE, lowercase for BLACK.
         """
         if self.color is Color.BLACK:
-            letter = self.__class__.__name__[0].lower()
+            return self._char.lower()
         else:
-            letter = self.__class__.__name__[0]
-        return letter
+            return self._char
 
     def u_str(self):
         """
@@ -1383,6 +1412,7 @@ class Bishop(Piece):
 
 
 class Knight(Piece):
+    _char = "N"
     value = 3
     jumps = True
 
@@ -1409,12 +1439,6 @@ class Knight(Piece):
             return True
         else:
             return False
-
-    def letter(self):
-        if self.color is Color.BLACK:
-            return "n"
-        else:
-            return "N"
 
 
 class Rook(Piece):
@@ -1611,35 +1635,6 @@ class Elephant(Piece):
         else:
             return False
 
-
-_PIECE_CHARS = {
-    "P": Pawn,
-    "N": Knight,
-    "B": Bishop,
-    "R": Rook,
-    "Q": Queen,
-    "K": King,
-    "C": Centaur,
-    "Z": Zebra,
-    "G": Giraffe,
-    "E": Elephant,
-}
-
-def piece_from_str(piece_char, row=0, col=0):
-    """
-    Takes a string with 1 letter identifying a piece. Returns that piece.
-    """
-    # Determine color
-    if piece_char.isupper():
-        color = Color.WHITE
-    else:
-        color = Color.BLACK
-    # Determine piece type
-    try:
-        return _PIECE_CHARS[piece_char.upper()]((row, col), color=color)
-    except KeyError:
-        raise ValueError(f"Unrecognized piece string: {piece_char!r}")
-
 ###############################################################################
 #  MAIN                                                                       #
 ###############################################################################
@@ -1668,7 +1663,7 @@ def main():
     return
 
 if __name__ == "__main__":
-    if 1:
+    if 0:
         test()
     else:
         main()
