@@ -404,10 +404,7 @@ class Board:
         Return True if there is a piece between the two squares.
         Return False if the path is clear.
         """
-        pieces = list(self.piece_slice(*from_square, *to_square))[1:-1]
-        if any(pieces):
-            return True
-        return False
+        return any(list(self.piece_slice(*from_square, *to_square))[1:-1])
 
     def has_attackers(self, square, color):
         """
