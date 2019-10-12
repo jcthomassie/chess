@@ -159,7 +159,7 @@ class Square:
         Return string representation of the square's position
         ( (0, 0)->'A8', (1, 1)->'B8', ... )
         """
-        return "{}{}".format(self.file, self.rank)
+        return f"{self.file}{self.rank}"
 
     def __repr__(self):
         return self.__str__()
@@ -622,9 +622,9 @@ class Board:
         # Parse and push the move
         self.push_move(Move.from_pgn(move_str, self, validate=validate))
         print("Move succeeded!")
-        print("Now {} valid moves".format(sum(len(v) for v in self.allowed_moves.values())))
+        print(f"Now {sum(len(v) for v in self.allowed_moves.values())} valid moves")
         t1 = time.time()
-        print("Move processed in {:.6f} sec".format(t1-t0))
+        print(f"Move processed in {t1 - t0:.6f} sec")
         return
 
     def find_king(self, color=None):
@@ -637,9 +637,9 @@ class Board:
         # Get list of kings for current player
         king_list = list( self.find_pieces(King, color) )
         if len(king_list) == 0:
-            raise InvalidBoardError("{} has no king!".format(color.name))
+            raise InvalidBoardError(f"{color.name} has no king!")
         elif len(king_list) > 1:
-            raise InvalidBoardError("{} has more than one king!".format(color.name))
+            raise InvalidBoardError(f"{color.name} has more than one king!")
         return king_list[0]
 
     def checkmate(self):
@@ -709,7 +709,7 @@ class Board:
             elif move_input[-1] == "?":
                 # all valid moves
                 if move_input == "?":
-                    print("{} valid moves:\n".format(sum((len(m) for m in self.allowed_moves.values()))))
+                    print(f"{sum((len(m) for m in self.allowed_moves.values()))} valid moves:\n")
                     for sq in self.allowed_moves.keys():
                         self.print_square_moves(sq)
                 # valid moves for a piece
@@ -755,7 +755,7 @@ class Board:
         if self.winner is Color.DRAW:
             print("    *    GAME DRAWN   *")
         else:
-            print("    *   {} WINS!   *".format(self.winner.name))
+            print(f"    *   {self.winner.name} WINS!   *")
         print("    * * * * * * * * * *\n")
         return
 
@@ -888,17 +888,9 @@ class Board:
         move hints.
         """
         space = "        "
-        print("_________________________________________________________")
-        print("\n")
+        print("_________________________________________________________\n\n")
         print(self.filled_board_str(orient=self.to_move, notate=True, notate_prefix=space))
-        print()
-        pstr = self.to_move.name
-        e = self.evaluate()
-        if e > 0:
-            mstr = "+" + str(e)
-        else:
-            mstr = str(e)
-        print(space + "     {} to play!  (Spread: {})".format(pstr, mstr))
+        print("\n" + space + f"     {self.to_move.name} to play!  (Spread: {self.evaluate():+d})")
         # Announce check
         if self.check:
             print("\n" + space + "  * * * King is in check! * * *")
@@ -916,7 +908,7 @@ class Board:
             edge_line =  "+" + "---+" * N_FILES + "\n"
             piece_line = "|" + "{}|" * N_FILES + "\n"
             self._board_fmt_str = edge_line
-            for r in Square.ROW_RANGE:
+            for _ in Square.ROW_RANGE:
                 self._board_fmt_str += piece_line + edge_line
         return self._board_fmt_str
 
@@ -971,12 +963,12 @@ class Board:
         """
         piece = self[from_square]
         if piece is None:
-            print("{} is empty!".format(from_square))
+            print(f"{from_square} is empty!")
         elif piece.square in self.allowed_moves:
-            print("{!r}: {}".format(piece, self.allowed_moves[from_square]))
+            print(f"{piece!r}: {self.allowed_moves[from_square]}")
             print(self.moves_board_str(from_square) + "\n")
         else:
-            print("No valid moves for {!r}!".format(piece))
+            print(f"No valid moves for {piece!r}!")
         return
 
     def moves_board_str(self, from_square, notate_prefix=""):
@@ -1007,7 +999,7 @@ class Board:
         return self.filled_board_str(orient=self.to_move, notate=True)
 
     def __repr__(self):
-        return "Board('{}')".format(self.fen)
+        return f"Board('{self.fen}')"
 
 class InvalidMoveError(Exception):
     pass
@@ -1049,9 +1041,9 @@ class Move:
         # Check that move is valid
         if validate:
             if not from_square in board.allowed_moves.keys():
-                raise InvalidMoveError("{} cannot move!".format(from_square))
+                raise InvalidMoveError(f"{from_square} cannot move!")
             if not to_square in board.allowed_moves[from_square]:
-                raise InvalidMoveError("{!r} cannot move to {}!".format(board[from_square], to_square))
+                raise InvalidMoveError(f"{board[from_square]!r} cannot move to {to_square}!")
 
         additions = [ ]
         removals = [ ]
@@ -1191,10 +1183,10 @@ class Move:
         # Ensure only one piece works
         if len(piece_list) == 0:
             raise InvalidMoveError(
-                    "{} has no {}s that can move to {}".format(
-                    board.to_move.name, ptype.__name__, to_square) )
+                f"{board.to_move.name} has no {ptype.__name__}s that can move to {to_square}"
+            )
         elif len(piece_list) > 1:
-            raise InvalidMoveError("{} pieces can move to {}")
+            raise InvalidMoveError(f"{len(piece_list)} pieces can move to {to_square}")
 
         piece = piece_list[0]
         return piece.square, to_square, promote_type
@@ -1288,7 +1280,7 @@ class Piece:
         elif piece_upper == "E":
             return Elephant((row, col), color=color)
         else:
-            raise ValueError("Unrecognized piece string: {}".format(piece_char))
+            raise ValueError(f"Unrecognized piece string: {piece_char!r}")
 
     @property
     def row(self):
@@ -1359,9 +1351,7 @@ class Piece:
             return self.letter()
 
     def __repr__(self):
-        return "{}({}, {})".format( self.__class__.__name__,
-                                    self.square,
-                                    self.color.name)
+        return f"{self.__class__.__name__}({self.square}, {self.color.name})"
 
 
 class Pawn(Piece):
@@ -1470,7 +1460,7 @@ class Knight(Piece):
             letter = "n"
         else:
             letter = "N"
-        return "{}".format(letter)
+        return f"{letter}"
 
 
 class Rook(Piece):
@@ -1710,9 +1700,9 @@ def test():
     t1 = time.time()
 
     move_count = len(board.move_history)
-    print("\nEvaluated {:d} moves in {:f} sec".format(move_count, t1-t0))
-    print("({:f} sec/position)".format((t1-t0)/move_count))
-    print("({:f} position/sec)".format(move_count/(t1-t0)))
+    print(f"\nEvaluated {move_count:d} moves in {t1 - t0:f} sec")
+    print(f"({(t1 - t0) / move_count:f} sec/position)")
+    print(f"({move_count / (t1 - t0):f} position/sec)")
     return
 
 def main():
