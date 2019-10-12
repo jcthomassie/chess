@@ -714,7 +714,7 @@ class Board:
                         self.print_square_moves(sq)
                 # valid moves for a piece
                 elif move_input[1] == "?":
-                    ptype = type(Piece.from_str(move_input[0]))
+                    ptype = type(piece_from_str(move_input[0]))
                     for piece in self.find_pieces(ptype, self.to_move):
                         self.print_square_moves(piece.square)
                 # valid moves for a square
@@ -803,7 +803,7 @@ class Board:
                 # LETTER -- make a piece with it
                 else:
                     col = c + skips
-                    self[(r, col)] = Piece.from_str(char, row=r, col=col)
+                    self[(r, col)] = piece_from_str(char, row=r, col=col)
 
         # Determine whose move
         to_move = fields[1].lower()
@@ -1151,14 +1151,14 @@ class Move:
 
         # Handle PROMOTIONS
         if pgn_str[-1].isalpha():
-            promote_type = type(Piece.from_str(pgn_str[-1]))
+            promote_type = type(piece_from_str(pgn_str[-1]))
             pgn_str = pgn_str[:-1]
         else:
             promote_type = None
 
         # Handle piece type
         if pgn_str[0] == pgn_str[0].upper():
-            ptype = type(Piece.from_str(pgn_str[0]))
+            ptype = type(piece_from_str(pgn_str[0]))
             pgn_str = pgn_str[1:]
         else:
             ptype = Pawn
@@ -1208,7 +1208,7 @@ class Move:
         """
         promote_type = None
         if len(square_str) == 5:
-            promote_type = type(Piece.from_str(square_str[-1]))
+            promote_type = type(piece_from_str(square_str[-1]))
         elif len(square_str) != 4:
             raise InvalidMoveError("Move string must be 4 characters (5 for pawn promotions)!")
 
@@ -1245,42 +1245,6 @@ class Piece:
         elif isinstance(locus, Pawn):
             self.color = locus.color
             self.square = locus.square
-
-    @staticmethod
-    def from_str(piece_char, row=0, col=0):
-        """
-        Takes a string with 1 letter identifying a piece.
-        Returns that piece.
-        """
-        # Determine color
-        piece_upper = piece_char.upper()
-        if piece_upper == piece_char:
-            color = Color.WHITE
-        else:
-            color = Color.BLACK
-        # Determine piece type
-        if piece_upper == "P":
-            return Pawn((row, col), color=color)
-        elif piece_upper == "N":
-            return Knight((row, col), color=color)
-        elif piece_upper == "B":
-            return Bishop((row, col), color=color)
-        elif piece_upper == "R":
-            return Rook((row, col), color=color)
-        elif piece_upper == "Q":
-            return Queen((row, col), color=color)
-        elif piece_upper == "K":
-            return King((row, col), color=color)
-        elif piece_upper == "C":
-            return Centaur((row, col), color=color)
-        elif piece_upper == "Z":
-            return Zebra((row, col), color=color)
-        elif piece_upper == "G":
-            return Giraffe((row, col), color=color)
-        elif piece_upper == "E":
-            return Elephant((row, col), color=color)
-        else:
-            raise ValueError(f"Unrecognized piece string: {piece_char!r}")
 
     @property
     def row(self):
@@ -1357,19 +1321,15 @@ class Piece:
 class Pawn(Piece):
     value = 1
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.unit = self.color.orientation
-
     def pseudovalid_coords_regular(self):
         """
         Generate all squares that the piece could potentially move to (non-captures)
         """
-        row = self.row + self.unit
+        row = self.row + self.color.orientation
         if 0 <= row < N_RANKS:
             yield row, self.col
         if not self.has_moved:
-            row += self.unit
+            row += self.color.orientation
             if 0 <= row < N_RANKS:
                 yield row, self.col
 
@@ -1378,9 +1338,9 @@ class Pawn(Piece):
         Generate all squares that the piece could potentially move to (captures only)
         """
         if self.col < N_FILES - 1:
-            yield self.row + self.unit, self.col + 1
+            yield self.row + self.color.orientation, self.col + 1
         if self.col > 0:
-            yield self.row + self.unit, self.col - 1
+            yield self.row + self.color.orientation, self.col - 1
 
     def move_is_valid(self, d_row, d_col, capture=False, **kwargs):
         """
@@ -1389,13 +1349,13 @@ class Pawn(Piece):
         """
         # If move is a capture, only allow forward diagonal moves by 1 space
         if capture:
-            if abs(d_col) == ( self.unit * d_row ) == 1:
+            if abs(d_col) == ( self.color.orientation * d_row ) == 1:
                 return True
             else:
                 return False
         else:
             # Only allow forward moves by 1 (if has not moved, then allow 2)
-            if d_col == 0 and ( self.unit * d_row == 1 or (not self.has_moved and self.unit * d_row == 2) ):
+            if d_col == 0 and ( self.color.orientation * d_row == 1 or (not self.has_moved and self.color.orientation * d_row == 2) ):
                 return True
             else:
                 return False
@@ -1403,9 +1363,6 @@ class Pawn(Piece):
 
 class Bishop(Piece):
     value = 3
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def pseudovalid_coords(self):
         """
@@ -1427,9 +1384,6 @@ class Bishop(Piece):
 class Knight(Piece):
     value = 3
     jumps = True
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def pseudovalid_coords(self):
         """
@@ -1455,19 +1409,15 @@ class Knight(Piece):
         else:
             return False
 
-    def __str__(self):
+    def letter(self):
         if self.color is Color.BLACK:
-            letter = "n"
+            return "n"
         else:
-            letter = "N"
-        return f"{letter}"
+            return "N"
 
 
 class Rook(Piece):
     value = 5
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     def pseudovalid_coords(self):
         """
@@ -1492,9 +1442,6 @@ class Rook(Piece):
 class Queen(Piece):
     value = 9
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def pseudovalid_coords(self):
         """
         Generate all squares that the piece could potentially move to.
@@ -1518,10 +1465,6 @@ class Queen(Piece):
 
 class King(Piece):
     value = 5
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
 
     def pseudovalid_coords(self):
         """
@@ -1551,10 +1494,6 @@ class King(Piece):
 class Centaur(Piece):
     value = 5
     jumps = True
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
 
     def pseudovalid_coords(self):
         """
@@ -1590,10 +1529,6 @@ class Zebra(Piece):
     value = 3
     jumps = True
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-
     def pseudovalid_coords(self):
         """
         Generate all squares that the piece could potentially move to.
@@ -1623,10 +1558,6 @@ class Giraffe(Piece):
     value = 2
     jumps = True
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-
     def pseudovalid_coords(self):
         """
         Generate all squares that the piece could potentially move to.
@@ -1655,15 +1586,11 @@ class Giraffe(Piece):
 class Elephant(Piece):
     value = 2
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.unit = self.color.orientation
-
     def pseudovalid_coords(self):
         """
         Generate all squares that the piece could potentially move to (non-captures)
         """
-        yield self.row + self.unit, self.col
+        yield self.row + self.color.orientation, self.col
         yield self.row + 1, self.col + 1
         yield self.row + 1, self.col - 1
         yield self.row - 1, self.col + 1
@@ -1675,13 +1602,42 @@ class Elephant(Piece):
         If the move is a capture, it can move diagonally
         """
         # Allow forward moves by 1
-        if d_col == 0 and ( self.unit * d_row == 1  ):
+        if d_col == 0 and ( self.color.orientation * d_row == 1  ):
             return True
         # Diagonal moves
         elif abs(d_col) == abs(d_row) == 1:
             return True
         else:
             return False
+
+
+_PIECE_CHARS = {
+    "P": Pawn,
+    "N": Knight,
+    "B": Bishop,
+    "R": Rook,
+    "Q": Queen,
+    "K": King,
+    "C": Centaur,
+    "Z": Zebra,
+    "G": Giraffe,
+    "E": Elephant,
+}
+
+def piece_from_str(piece_char, row=0, col=0):
+    """
+    Takes a string with 1 letter identifying a piece. Returns that piece.
+    """
+    # Determine color
+    if piece_char.isupper():
+        color = Color.WHITE
+    else:
+        color = Color.BLACK
+    # Determine piece type
+    try:
+        return _PIECE_CHARS[piece_char.upper()]((row, col), color=color)
+    except KeyError:
+        raise ValueError(f"Unrecognized piece string: {piece_char!r}")
 
 ###############################################################################
 #  MAIN                                                                       #
