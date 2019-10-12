@@ -161,6 +161,10 @@ class Square:
         """
         return f"{self.file}{self.rank}"
 
+    def __iter__(self):
+        yield self.row
+        yield self.col
+
     def __repr__(self):
         return self.__str__()
 
@@ -246,21 +250,27 @@ class Board:
         self._last_check_recompute = None
         return
 
+    def _set_coord(self, row, col, piece):
+        self.board[row][col] = piece
+
+    def _get_coord(self, row, col):
+        return self.board[row][col]
+
+    def _del_coord(self, row, col):
+        self.board[row][col] = None
+
     def __setitem__(self, locus, piece):
         """
         Inserts a piece at the specified square position.
         board['A1'] = Rook(WHITE, 'A1')
         """
-        if not ( piece is None or isinstance(piece, Piece) ):
+        if not (piece is None or isinstance(piece, Piece)):
             raise TypeError("Board can only contain Piece and NoneType objects!")
 
-        if isinstance(locus, tuple):
-            self.board[locus[0]][locus[1]] = piece
-        elif isinstance(locus, Square):
-            self.board[locus.row][locus.col] = piece
+        if isinstance(locus, tuple) or isinstance(locus, Square):
+            self._set_coord(*locus, piece)
         elif isinstance(locus, str):
-            sq = Square.from_str(locus)
-            self.board[sq.row][sq.col] = piece
+            self._set_coord(*Square.from_str(locus), piece)
         else:
             raise TypeError("Invalid square locus for board!")
 
@@ -269,16 +279,12 @@ class Board:
         Gets the piece on the specified square position (None for empty square).
         board['A1'] -> Rook(White, A1)
         """
-        if isinstance(locus, tuple):
-            piece = self.board[locus[0]][locus[1]]
-        elif isinstance(locus, Square):
-            piece = self.board[locus.row][locus.col]
+        if isinstance(locus, tuple) or isinstance(locus, Square):
+            return self._get_coord(*locus)
         elif isinstance(locus, str):
-            sq = Square.from_str(locus)
-            piece = self.board[sq.row][sq.col]
+            return self._get_coord(*Square.from_str(locus))
         else:
             raise TypeError("Invalid square locus for board!")
-        return piece
 
     def __delitem__(self, locus):
         """
@@ -286,7 +292,6 @@ class Board:
         slot with None.
         """
         self[locus] = None
-        return
 
     def add_piece(self, piece, color, square):
         """
@@ -403,7 +408,7 @@ class Board:
         Return True if there is a piece between the two squares.
         Return False if the path is clear.
         """
-        pieces = list(self.piece_slice(*from_square.coord, *to_square.coord))[1:-1]
+        pieces = list(self.piece_slice(*from_square, *to_square))[1:-1]
         if any(pieces):
             return True
         return False
@@ -432,7 +437,7 @@ class Board:
         if self.obstruction(king.square, rook.square):
             return False
         # Make sure king doesn't cross through check (include current square)
-        path = list(self.square_slice(*king.coord, *rook.coord))[:3]
+        path = list(self.square_slice(*king.square, *rook.square))[:3]
         for square in path:
             if self.has_attackers(square, king.color.opponent):
                 return False
@@ -444,7 +449,7 @@ class Board:
         """
         # Check queen side
         for square, side, d_col in zip(self.rook_homes[king.color], ("Q", "K"), (-2, 2)):
-            rook = self[ square ]
+            rook = self[square]
             if isinstance(rook, Rook):
                 if self.castle_states[king.color][side]:
                     if self.verify_castle(king, rook):
@@ -1051,8 +1056,8 @@ class Move:
         en_passant_square = None
 
         # Get pieces
-        piece = board.board[from_square.row][from_square.col]
-        target = board.board[to_square.row][to_square.col]
+        piece = board[from_square]
+        target = board[to_square]
 
         # If promotion, remove piece and add new one
         if promote_type is not None:
@@ -1069,7 +1074,7 @@ class Move:
         # Determine if en passant capture
         if to_square == board.en_passant_square:
             d_row = piece.color.orientation
-            removals.append(board.board[to_square.row - d_row][to_square.col])
+            removals.append(board[to_square.row - d_row, to_square.col])
 
         # Determine if opens en passant square
         if isinstance(piece, Pawn):
@@ -1253,10 +1258,6 @@ class Piece:
     @property
     def col(self):
         return self.square.col
-
-    @property
-    def coord(self):
-        return self.square.coord
 
     @property
     def rank(self):
@@ -1667,7 +1668,7 @@ def main():
     return
 
 if __name__ == "__main__":
-    if 0:
+    if 1:
         test()
     else:
         main()
