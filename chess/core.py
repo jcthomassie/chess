@@ -5,6 +5,7 @@ Created on Fri Mar  8 09:57:04 2019
 @author: jthom
 """
 import time
+import enum
 import itertools
 ###############################################################################
 #  GLOBALS                                                                    #
@@ -26,15 +27,19 @@ UNICODE_PIECE_SYMBOLS = {
     "P": u"♙", "p": u"♟",
 }
 
-# COLORS / RESULTS
-WHITE = 0
-BLACK = 1
-DRAW = -1
 
-# COLOR INFO
-FLIP_COLOR = { WHITE: BLACK, BLACK: WHITE }
-COLOR_ORIENTATION = { WHITE: -1, BLACK: 1 }
-COLOR_NAME = { WHITE: "White", BLACK: "Black", DRAW: "Draw" }
+class Color(enum.Enum):
+    WHITE = -1
+    BLACK = 1
+    DRAW = 0
+
+    @property
+    def opponent(self):
+        return Color(-self.value)
+
+    @property
+    def orientation(self):
+        return self.value
 
 ###############################################################################
 #  BOARD CORE                                                                 #
@@ -166,7 +171,7 @@ class Square:
         if isinstance(other, Square):
             return self.__hash__() == other.__hash__()
         elif isinstance(other, tuple):
-            return self.row == tuple[0] and self.row == tuple[1]
+            return self.row == other[0] and self.row == other[1]
 
     def __add__(self, other):
         if isinstance(other, Square):
@@ -200,7 +205,7 @@ class Board:
         else:
             self.load_fen(fen)
 
-    def reset(self, board=None, to_move=WHITE):
+    def reset(self, board=None, to_move=Color.WHITE):
         """
         Initializes an empty board, clears game history, sets winner to None
         and to_move to WHITE. If board is specified, use that as the board.
@@ -214,12 +219,20 @@ class Board:
             self.board = board
         # Game trackers
         self.move_history = [ ]
-        self.castle_states = { WHITE : { "Q": True, "K": True },
-                               BLACK : { "Q": True, "K": True }, }
-        self.rook_homes = { WHITE: [ Square(N_RANKS - 1, 0),
-                                     Square(N_RANKS - 1, N_FILES - 1) ],
-                            BLACK: [ Square(0, 0),
-                                     Square(0, N_FILES - 1) ], }
+        self.castle_states = {
+            Color.WHITE : {"Q": True, "K": True},
+            Color.BLACK : {"Q": True, "K": True},
+        }
+        self.rook_homes = {
+            Color.WHITE: [
+                Square(N_RANKS - 1, 0),
+                Square(N_RANKS - 1, N_FILES - 1)
+            ],
+            Color.BLACK: [
+                Square(0, 0),
+                Square(0, N_FILES - 1)
+            ],
+        }
         self.en_passant_square = None
 
         self.to_move = to_move
@@ -421,7 +434,7 @@ class Board:
         # Make sure king doesn't cross through check (include current square)
         path = list(self.square_slice(*king.coord, *rook.coord))[:3]
         for square in path:
-            if self.has_attackers(square, FLIP_COLOR[king.color]):
+            if self.has_attackers(square, king.color.opponent):
                 return False
         return True
 
@@ -446,7 +459,7 @@ class Board:
         # Normal moves
         for square in self.valid_targets_piece(king):
             # Keep moves that do not result in check
-            if not self.has_attackers(square, FLIP_COLOR[king.color]):
+            if not self.has_attackers(square, king.color.opponent):
                 yield square
         # Castling moves
         for square in self.valid_castles(king):
@@ -524,9 +537,9 @@ class Board:
             move = Move.from_squares(from_square, to_square, self, validate=False)
             self.push_move(move)
             # Keep the move if it does not cause check
-            if from_square == king_square and not self.has_attackers(to_square, FLIP_COLOR[color]):
+            if from_square == king_square and not self.has_attackers(to_square, color.opponent):
                 yield to_square
-            elif not self.has_attackers(king_square, FLIP_COLOR[color]):
+            elif not self.has_attackers(king_square, color.opponent):
                 yield to_square
             # Reset for next test
             self.undo_move()
@@ -538,7 +551,7 @@ class Board:
         """
         if self._last_check_recompute != len(self.move_history):
             king = self.find_king(color=self.to_move)
-            self._check = self.has_attackers(king.square, FLIP_COLOR[king.color])
+            self._check = self.has_attackers(king.square, king.color.opponent)
             self._last_check_recompute = len(self.move_history)
         return self._check
 
@@ -567,7 +580,7 @@ class Board:
         for side, state in move.castle_updates:
             self.castle_states[self.to_move][side] = state
         self.en_passant_square = move.en_passant_square
-        self.to_move = FLIP_COLOR[self.to_move]
+        self.to_move = self.to_move.opponent
         # TODO: update halfmoves and fullmoves
         return
 
@@ -587,7 +600,7 @@ class Board:
         for piece in last_move.removals:
             self[piece.square] = piece
 
-        self.to_move = FLIP_COLOR[self.to_move]
+        self.to_move = self.to_move.opponent
         # Revert castle bans
         for side, state in last_move.castle_updates:
             self.castle_states[self.to_move][side] = not state
@@ -624,9 +637,9 @@ class Board:
         # Get list of kings for current player
         king_list = list( self.find_pieces(King, color) )
         if len(king_list) == 0:
-            raise InvalidBoardError("{} has no king!".format(COLOR_NAME[color]))
+            raise InvalidBoardError("{} has no king!".format(color.name))
         elif len(king_list) > 1:
-            raise InvalidBoardError("{} has more than one king!".format(COLOR_NAME[color]))
+            raise InvalidBoardError("{} has more than one king!".format(color.name))
         return king_list[0]
 
     def checkmate(self):
@@ -653,10 +666,10 @@ class Board:
         Return False otherwise.
         """
         if self.checkmate():
-            self.winner = FLIP_COLOR[self.to_move]
+            self.winner = self.to_move.opponent
             return True
         elif self.stalemate():
-            self.winner = DRAW
+            self.winner = Color.DRAW
             return True
         else:
             return False
@@ -668,7 +681,7 @@ class Board:
         score = 0
         for piece in self.piece_generator():
             # Add material for WHITE
-            if piece.color == WHITE:
+            if piece.color == Color.WHITE:
                 score += piece.value
             # Subtract material for BLACK
             else:
@@ -687,7 +700,7 @@ class Board:
                 print("\n* * * Draw offered ( A - Accept ) * * * ")
                 draw = input(">>> ").strip()
                 if draw.strip().upper() == "A":
-                    self.winner = DRAW
+                    self.winner = Color.DRAW
                     actionable = True
             # LIST: print list of previous moves
             elif move_input.upper() == "L":
@@ -712,7 +725,7 @@ class Board:
 
         if move_input.upper() == "R":
             # Set winner to opponent
-            self.winner = FLIP_COLOR[self.to_move]
+            self.winner = self.to_move.opponent
         elif move_input.upper() == "U":
             self.undo_move()
         else:
@@ -739,10 +752,10 @@ class Board:
                     print(e)
 
         print("\n\n    * * * * * * * * * *")
-        if self.winner == DRAW:
+        if self.winner == Color.DRAW:
             print("    *    GAME DRAWN   *")
         else:
-            print("    *   {} WINS!   *".format(COLOR_NAME[self.winner]).upper())
+            print("    *   {} WINS!   *".format(self.winner.name))
         print("    * * * * * * * * * *\n")
         return
 
@@ -795,9 +808,9 @@ class Board:
         # Determine whose move
         to_move = fields[1].lower()
         if to_move == "w":
-            self.to_move = WHITE
+            self.to_move = Color.WHITE
         elif to_move == "b":
-            self.to_move = BLACK
+            self.to_move = Color.BLACK
         else:
             raise ValueError("Unrecognized color symbol!")
 
@@ -848,7 +861,7 @@ class Board:
         board_str = "/".join(row_strs)
 
         # Get to move
-        move_str = COLOR_NAME[self.to_move][0].lower()
+        move_str = self.to_move.name[0].lower()
 
         # TODO: parse castling state
         castle_str = "KQkq"
@@ -879,7 +892,7 @@ class Board:
         print("\n")
         print(self.filled_board_str(orient=self.to_move, notate=True, notate_prefix=space))
         print()
-        pstr = COLOR_NAME[self.to_move]
+        pstr = self.to_move.name
         e = self.evaluate()
         if e > 0:
             mstr = "+" + str(e)
@@ -907,7 +920,7 @@ class Board:
                 self._board_fmt_str += piece_line + edge_line
         return self._board_fmt_str
 
-    def filled_board_str(self, orient=WHITE, notate=False, notate_prefix="", highlights=[]):
+    def filled_board_str(self, orient=Color.WHITE, notate=False, notate_prefix="", highlights=[]):
         """
         Populates the empty board format string with the pieces from the
         current board state. If reverse is True, shows perspective from top
@@ -916,7 +929,7 @@ class Board:
         front of every line when notation is applied. Highlights is a list of
         squares to be wrapped with parentheses.
         """
-        if orient == BLACK:
+        if orient == Color.BLACK:
             reverse = True
         else:
             reverse = False
@@ -1063,7 +1076,7 @@ class Move:
 
         # Determine if en passant capture
         if to_square == board.en_passant_square:
-            d_row = COLOR_ORIENTATION[piece.color]
+            d_row = piece.color.orientation
             removals.append(board.board[to_square.row - d_row][to_square.col])
 
         # Determine if opens en passant square
@@ -1179,7 +1192,7 @@ class Move:
         if len(piece_list) == 0:
             raise InvalidMoveError(
                     "{} has no {}s that can move to {}".format(
-                    COLOR_NAME[board.to_move], ptype.__name__, to_square) )
+                    board.to_move.name, ptype.__name__, to_square) )
         elif len(piece_list) > 1:
             raise InvalidMoveError("{} pieces can move to {}")
 
@@ -1223,7 +1236,7 @@ class Piece:
     jumps = False # True for Knight-like pieces
     value = None # Material point value
 
-    def __init__(self, locus, color=WHITE, has_moved=False):
+    def __init__(self, locus, color=Color.WHITE, has_moved=False):
         # Core attributes
         self.color = color
         self.has_moved = has_moved
@@ -1250,9 +1263,9 @@ class Piece:
         # Determine color
         piece_upper = piece_char.upper()
         if piece_upper == piece_char:
-            color = WHITE
+            color = Color.WHITE
         else:
-            color = BLACK
+            color = Color.BLACK
         # Determine piece type
         if piece_upper == "P":
             return Pawn((row, col), color=color)
@@ -1297,10 +1310,6 @@ class Piece:
     def file(self):
         return self.square.file
 
-    @property
-    def color_name(self):
-        return COLOR_NAME[self.color]
-
     def generate_row(self):
         for col in range(0, self.col):
             yield self.row, col
@@ -1331,7 +1340,7 @@ class Piece:
         Single character representation of piece.
         Uppercase for WHITE, lowercase for BLACK.
         """
-        if self.color == BLACK:
+        if self.color == Color.BLACK:
             letter = self.__class__.__name__[0].lower()
         else:
             letter = self.__class__.__name__[0]
@@ -1352,7 +1361,7 @@ class Piece:
     def __repr__(self):
         return "{}({}, {})".format( self.__class__.__name__,
                                     self.square,
-                                    COLOR_NAME[self.color])
+                                    self.color.name)
 
 
 class Pawn(Piece):
@@ -1360,7 +1369,7 @@ class Pawn(Piece):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.unit = COLOR_ORIENTATION[self.color]
+        self.unit = self.color.orientation
 
     def pseudovalid_coords_regular(self):
         """
@@ -1457,7 +1466,7 @@ class Knight(Piece):
             return False
 
     def __str__(self):
-        if self.color == BLACK:
+        if self.color == Color.BLACK:
             letter = "n"
         else:
             letter = "N"
@@ -1658,7 +1667,7 @@ class Elephant(Piece):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.unit = COLOR_ORIENTATION[self.color]
+        self.unit = self.color.orientation
 
     def pseudovalid_coords(self):
         """
@@ -1712,7 +1721,7 @@ def main():
     return
 
 if __name__ == "__main__":
-    if 1:
+    if 0:
         test()
     else:
         main()
