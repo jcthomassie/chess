@@ -38,24 +38,24 @@ def square_corner(row, col, flipped=False):
 
 def pix_to_square(x, y, flipped=False):
     if not flipped:
-        row = ( y - MARGIN_PIX ) // SQUARE_PIX
-        col = ( x - MARGIN_PIX ) // SQUARE_PIX
+        row = (y - MARGIN_PIX) // SQUARE_PIX
+        col = (x - MARGIN_PIX) // SQUARE_PIX
     else:
-        row = core.N_RANKS - 1 - ( y - MARGIN_PIX ) // SQUARE_PIX
-        col = core.N_FILES - 1 - ( x - MARGIN_PIX ) // SQUARE_PIX
+        row = core.N_RANKS - 1 - (y - MARGIN_PIX) // SQUARE_PIX
+        col = core.N_FILES - 1 - (x - MARGIN_PIX) // SQUARE_PIX
     # Restrict to board
-    row = min( max(row, 0), core.N_RANKS - 1 )
-    col = min( max(col, 0), core.N_FILES - 1 )
+    row = min(max(row, 0), core.N_RANKS - 1)
+    col = min(max(col, 0), core.N_FILES - 1)
     return core.Square(row, col)
+
 
 class PieceIcon(pygame.sprite.Sprite):
     """
     Chess piece sprite.
     """
     def __init__(self, chess_piece, flipped=False):
-        super(PieceIcon, self).__init__()
-        im = self.get_image(chess_piece)
-        self.image = pygame.transform.smoothscale(im, (SQUARE_PIX, SQUARE_PIX))
+        super().__init__()
+        self.image = self.get_image(chess_piece)
         self.rect = self.image.get_rect()
         self.layer = 0
 
@@ -65,11 +65,15 @@ class PieceIcon(pygame.sprite.Sprite):
 
     @staticmethod
     def get_image(chess_piece):
-        piece_color = chess_piece.color_name.lower()
-        piece_name = type(chess_piece).__name__.lower()
+        """
+        Get a scaled image for the input chess piece.
+        """
+        piece_name = chess_piece.name.lower()
+        piece_color = chess_piece.color.name
         image_dir = os.path.join(os.path.dirname(__file__), "icons")
-        image_path = os.path.join(image_dir, "{}_{}.png".format( piece_name, piece_color ))
-        return pygame.image.load(image_path)
+        image_path = os.path.join(image_dir, f"{piece_name}_{piece_color}.png")
+        image = pygame.image.load(image_path)
+        return pygame.transform.smoothscale(image, (SQUARE_PIX, SQUARE_PIX))
 
     @property
     def row(self):
@@ -98,7 +102,7 @@ class PieceIcon(pygame.sprite.Sprite):
 
 class BoardIcon(pygame.Surface):
     def __init__(self, width, height, square_size):
-        super(BoardIcon, self).__init__((width, height))
+        super().__init__((width, height))
 
         colors = itertools.cycle((WHITE_RGB, BLACK_RGB))
 
@@ -132,7 +136,6 @@ class Game:
         self.sprite_lookup = { piece.square: piece for piece in self.sprites.get_sprites_from_layer(0) }
 
         self.latched = None
-        return
 
     def draw_square_highlight(self, square, color):
         corner = square_corner(square.row, square.col, flipped=self.flipped)
@@ -244,9 +247,9 @@ class Game:
             self.board.undo_move()
 
     def flip_board(self, color=None):
-        if color == core.WHITE:
+        if color is core.Color.WHITE:
             self.flipped = False
-        elif color == core.BLACK:
+        elif color is core.Color.BLACK:
             self.flipped = True
         else:
             self.flipped = not self.flipped

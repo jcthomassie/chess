@@ -1335,6 +1335,13 @@ class Piece:
         """
         return UNICODE_PIECE_SYMBOLS[self.letter()]
 
+    @property
+    def name(self):
+        """
+        Return full piece name.
+        """
+        return self.__class__.__name__
+
     def __str__(self):
         if UNICODE_PIECES:
             return self.u_str()
