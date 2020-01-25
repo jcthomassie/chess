@@ -4,9 +4,10 @@ Created on Fri Mar  8 09:57:04 2019
 
 @author: jthom
 """
-import time
 import enum
 import itertools
+import time
+
 ###############################################################################
 #  GLOBALS                                                                    #
 ###############################################################################
@@ -1659,15 +1660,7 @@ def test():
     print(f"\nEvaluated {move_count:d} moves in {t1 - t0:f} sec")
     print(f"({(t1 - t0) / move_count:f} sec/position)")
     print(f"({move_count / (t1 - t0):f} position/sec)")
-    return
 
 def main():
     board = Board("Standard")
     board.play_game()
-    return
-
-if __name__ == "__main__":
-    if 0:
-        test()
-    else:
-        main()

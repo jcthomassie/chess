@@ -8,5 +8,6 @@ dist/
 *.pyc
 *.pyd
 
-# Spyder
+# Editors
 .spyproject/
+.vscode/
