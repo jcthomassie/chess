@@ -1129,3 +1129,94 @@ class BaseBoard:
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.board_fen()!r})"
+
+
+class Move:
+    """
+    Represents a move from a square to a square and possibly the promotion
+    piece type. Drops and null moves are supported.
+
+    Parameters
+    ----------
+        from_square (Square)
+        to_square (Square)
+        promotion (Piece, None)
+        drop (Piece, None)
+    """
+    __slots__ = ["from_square", "to_square", "promotion", "drop"]
+
+    def __init__(self, from_square, to_square, promotion=None, drop=None):
+        self.from_square = from_square
+        self.to_square = to_square
+        self.promotion = promotion
+        self.drop = drop
+
+    def uci(self):
+        """
+        Gets the UCI string for the move.
+        For example, a move from a7 to a8 would be ``a7a8`` or ``a7a8q``
+        (if the latter is a promotion to a queen).
+        The UCI representation of a null move is ``0000``.
+        """
+        if self.drop is not None:
+            return self.drop.symbol().upper() + "@" + self.to_square.name
+        elif self.promotion is not None:
+            return (self.from_square.name + self.to_square.name + self.promotion.symbol()).lower()
+        elif self.from_square is not None and self.to_square is not None:
+            return (self.from_square.name + self.to_square.name).lower()
+        else:
+            return "0000"
+
+    def __bool__(self):
+        return any(
+            attr_ is not None for attr_ in
+            (self.from_square, self.to_square, self.promotion, self.drop)
+        )
+
+    def __eq__(self, other):
+        if isinstance(other, Move):
+            return (
+                self.from_square == other.from_square and
+                self.to_square == other.to_square and
+                self.promotion == other.promotion and
+                self.drop == other.drop)
+        else:
+            return NotImplemented
+
+    def __repr__(self):
+        return f"Move.from_uci({self.uci()!r})"
+
+    def __str__(self):
+        return self.uci()
+
+    @classmethod
+    def from_uci(cls, uci):
+        """
+        Parses an UCI string.
+        :raises: :exc:`ValueError` if the UCI string is invalid.
+        """
+        if uci == "0000":
+            return cls.null()
+        elif len(uci) == 4 and "@" == uci[1]:
+            drop = Piece.from_symbol(uci[0])
+            square = Square[uci[2:].upper()]
+            return cls(square, square, drop=drop)
+        elif 4 <= len(uci) <= 5:
+            from_square = Square[uci[0:2].upper()]
+            to_square = Square[uci[2:4].upper()]
+            promotion = Piece.from_symbol(uci[4]) if len(uci) == 5 else None
+            if from_square == to_square:
+                raise ValueError(f"invalid uci (use 0000 for null moves): {uci!r}")
+            return cls(from_square, to_square, promotion=promotion)
+        else:
+            raise ValueError(f"expected uci string to be of length 4 or 5: {uci!r}")
+
+    @classmethod
+    def null(cls):
+        """
+        Gets a null move.
+        A null move just passes the turn to the other side (and possibly
+        forfeits en passant capturing). Null moves evaluate to ``False`` in
+        boolean contexts.
+        """
+        return cls(0, 0)
