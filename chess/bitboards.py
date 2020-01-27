@@ -799,26 +799,6 @@ class BaseBoard:
             if promoted:
                 self._promoted ^= square
 
-    def __getitem__(self, mask):
-        """
-        Yield pieces occupying squares within the input mask.
-        """
-        for square in SquareSet(mask):
-            yield self.piece_at(square)
-
-    def __delitem__(self, mask):
-        """
-        Clear pieces occupying squares within the input mask.
-        """
-        self.clear_mask(mask)
-
-    def __setitem__(self, mask, piece):
-        """
-        Set pieces occupying squares within the input mask.
-        """
-        for square in SquareSet(mask):
-            self.set_piece_at(square, piece)
-
     def king(self, color):
         """
         Finds the king square of the given color. Returns ``None`` if there
@@ -1056,3 +1036,96 @@ class BaseBoard:
                 square_index += 1
             elif c == "~":
                 self._promoted |= SQUARES[square_index - 1].mirror()
+
+    def copy(self):
+        """
+        Returns a copy of the board.
+        """
+        board = self.__class__()
+        board._pieces = self._pieces.copy()
+        board._occupied = self._occupied.copy()
+        board._promoted = self._promoted
+        return board
+
+    def __copy__(self):
+        return self.copy()
+
+    def __iter__(self):
+        """
+        Yield all pieces on the board. None is yielded for empty squares.
+        """
+        for square in SQUARES:
+            yield self.piece_at(square)
+
+    def __contains__(self, other):
+        """
+        If other is a Piece, return True if the piece is on the board.
+        If other is a Square, return True if the square is filled.
+        If other is an int (mask), return True if all masked squares are filled.
+        """
+        if isinstance(other, Piece): # piece is on the board
+            return bool(self.pieces_mask(other.__class__, other.color))
+        elif isinstance(other, Square): # square is filled
+            return self.piece_type_at(other) is not None
+        try:
+            return all(self.piece_type_at(square) is not None for square in SquareSet(other))
+        except (TypeError, ValueError):
+            return NotImplemented
+
+    def __getitem__(self, mask):
+        """
+        Yield pieces occupying squares within the input mask.
+        """
+        for square in SquareSet(mask):
+            yield self.piece_at(square)
+
+    def __delitem__(self, mask):
+        """
+        Clear pieces occupying squares within the input mask.
+        """
+        self.clear_mask(mask)
+
+    def __setitem__(self, mask, piece):
+        """
+        Set pieces occupying squares within the input mask.
+        """
+        for square in SquareSet(mask):
+            self.set_piece_at(square, piece)
+
+    def __eq__(self, board):
+        """
+        Return True if all masks other than promotions are equivalent.
+        """
+        if isinstance(board, BaseBoard):
+            return all(
+                self._occupied == board._occupied,
+                self._pieces == board._pieces,
+            )
+        else:
+            return NotImplemented
+
+    def __str__(self):
+        """
+        Symbolic representation of the entire board.
+        """
+        builder = []
+
+        for square in SQUARES:
+            square = square.mirror()
+            piece = self.piece_at(square)
+
+            if piece:
+                builder.append(piece.symbol())
+            else:
+                builder.append(".")
+
+            if square & File.H:
+                if square is not Square.H1:
+                    builder.append("\n")
+            else:
+                builder.append(" ")
+
+        return "".join(builder)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.board_fen()!r})"
