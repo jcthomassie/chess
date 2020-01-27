@@ -142,7 +142,7 @@ class Square(MaskEnum):
         """
         return max(abs(self._file - other._file), abs(self._rank - other._rank))
 
-    def mirror(self, square):
+    def mirror(self):
         """
         Mirrors the square vertically.
         """
@@ -579,7 +579,7 @@ class BaseBoard:
     otherwise specified in the optional *board_fen* argument. If *board_fen*
     is ``None``, an empty board is created.
     """
-    def __init__(self):
+    def __init__(self, fen=None):
         self._pieces = {}
         self._occupied = {
             None: MASK_EMPTY, # ANY COLOR
@@ -587,6 +587,9 @@ class BaseBoard:
             Color.BLACK: MASK_EMPTY,
         }
         self.clear_board()
+
+        if fen is not None:
+            self.set_board_fen(fen)
 
     def clear_board(self):
         """
@@ -636,14 +639,28 @@ class BaseBoard:
         """
         Return SquareSet of locations occupied by any pieces.
         """
-        return SquareSet(self._occupied[None])
+        return SquareSet(self.occupied)
 
     @property
-    def occupied_mask(self):
+    def occupied(self):
         """
         Return mask for all occupied squares.
         """
         return self._occupied[None]
+
+    @property
+    def sliding_attackers(self):
+        """
+        Return mask for all sliding attackers (rank and file attacks).
+        """
+        return self._pieces_mask(Queen) | self._pieces_mask(Rook)
+
+    @property
+    def diagonal_attackers(self):
+        """
+        Return mask for all diagonal attackers.
+        """
+        return self._pieces_mask(Queen) | self._pieces_mask(Bishop)
 
     def clear_mask(self, mask):
         """
@@ -694,7 +711,7 @@ class BaseBoard:
         ----------
             square (Square)
         """
-        if not square & self._occupied[None]:
+        if not square & self.occupied:
             return None  # Early return
         for piece_type, piece_mask in self._pieces.items():
             if square & piece_mask:
@@ -750,7 +767,7 @@ class BaseBoard:
         ----------
             square (Square)
         """
-        if not square & self._occupied[None]:
+        if not square & self.occupied:
             return None  # Early return
         for piece_type, piece_mask in self._pieces.items():
             if square & piece_mask:
@@ -836,10 +853,10 @@ class BaseBoard:
         else:
             attacks = 0
             if self.is_piece(square, Bishop) or self.is_piece(square, Queen):
-                attacks = BB_DIAG_ATTACKS[square.value][BB_DIAG_MASKS[square.value] & self._occupied[None]]
+                attacks = BB_DIAG_ATTACKS[square.value][BB_DIAG_MASKS[square.value] & self.occupied]
             if self.is_piece(square, Rook) or self.is_piece(square, Queen):
-                attacks |= (BB_RANK_ATTACKS[square.value][BB_RANK_MASKS[square.value] & self._occupied[None]] |
-                            BB_FILE_ATTACKS[square.value][BB_FILE_MASKS[square.value] & self._occupied[None]])
+                attacks |= (BB_RANK_ATTACKS[square.value][BB_RANK_MASKS[square.value] & self.occupied] |
+                            BB_FILE_ATTACKS[square.value][BB_FILE_MASKS[square.value] & self.occupied])
             return attacks
 
     def attacks(self, square):
@@ -859,15 +876,12 @@ class BaseBoard:
         file_pieces = BB_FILE_MASKS[square.value] & occupied
         diag_pieces = BB_DIAG_MASKS[square.value] & occupied
 
-        queens_and_rooks = self._pieces_mask(Queen) | self._pieces_mask(Rook)
-        queens_and_bishops = self._pieces_mask(Queen) | self._pieces_mask(Bishop)
-
         attackers = (
             (BB_KING_ATTACKS[square.value] & self._pieces_mask(King)) |
             (BB_KNIGHT_ATTACKS[square.value] & self._pieces_mask(Knight)) |
-            (BB_RANK_ATTACKS[square.value][rank_pieces] & queens_and_rooks) |
-            (BB_FILE_ATTACKS[square.value][file_pieces] & queens_and_rooks) |
-            (BB_DIAG_ATTACKS[square.value][diag_pieces] & queens_and_bishops) |
+            (BB_RANK_ATTACKS[square.value][rank_pieces] & self.sliding_attackers) |
+            (BB_FILE_ATTACKS[square.value][file_pieces] & self.sliding_attackers) |
+            (BB_DIAG_ATTACKS[square.value][diag_pieces] & self.diagonal_attackers) |
             (BB_PAWN_ATTACKS[not color][square.value] & self._pieces_mask(Pawn)))
 
         return attackers & self._occupied[color]
@@ -882,7 +896,7 @@ class BaseBoard:
             color (Color)
             square (Square)
         """
-        return self._attackers_mask(color, square, self._occupied[None])
+        return self._attackers_mask(color, square, self.occupied)
 
     def is_attacked_by(self, color, square):
         """
@@ -908,3 +922,137 @@ class BaseBoard:
             square (Square)
         """
         return SquareSet(self.attackers_mask(color, square))
+
+    def pin_mask(self, color, square):
+        """
+        Get pin mask from the given square to the king of the given color.
+        If there is no pin, then a mask of the entire board is returned.
+
+        Parameters
+        ----------
+            color (Color)
+            square (Square)
+        """
+        king = self.king(color)
+        if king is None:
+            return MASK_FULL
+
+        for attacks, sliders in [(BB_FILE_ATTACKS, self.sliding_attackers),
+                                 (BB_RANK_ATTACKS, self.sliding_attackers),
+                                 (BB_DIAG_ATTACKS, self.diagonal_attackers)]:
+            rays = attacks[king.value][0]
+            if rays & square:
+                sniper_mask = rays & sliders & self._occupied[not color]
+                for sniper in scan_reversed(sniper_mask):
+                    if BB_BETWEEN[sniper.value][king.value] & (self.occupied | square) == square:
+                        return BB_RAYS[king.value][sniper.value]
+
+                break
+
+        return MASK_FULL
+
+    def pin(self, color, square):
+        """
+        Get square set for pins from the given square to the king of the given color.
+        If there is no pin, then a mask of the entire board is returned.
+
+        Parameters
+        ----------
+            color (Color)
+            square (Square)
+        """
+        return SquareSet(self.pin_mask(color, square))
+
+    def is_pinned(self, color, square):
+        """
+        Detects if the given square is pinned to the king of the given color.
+        """
+        return self.pin_mask(color, square) != MASK_FULL
+
+    def board_fen(self, *, promoted=False):
+        """
+        Gets the board FEN string.
+        """
+        builder = []
+        empty = 0
+
+        for square in SQUARES:
+            square = square.mirror()
+            piece = self.piece_at(square)
+
+            if not piece:
+                empty += 1
+            else:
+                if empty:
+                    builder.append(str(empty))
+                    empty = 0
+                builder.append(piece.symbol())
+                if promoted and square & self.promoted:
+                    builder.append("~")
+
+            if square & File.H:
+                if empty:
+                    builder.append(str(empty))
+                    empty = 0
+
+                if square is not Square.H1:
+                    builder.append("/")
+
+        return "".join(builder)
+
+    def set_board_fen(self, fen):
+        """
+        Parses a FEN and sets the board to match it.
+        """
+        # Compability with set_fen().
+        fen = fen.strip()
+        if " " in fen:
+            raise ValueError(f"expected position part of fen, got multiple parts: {fen!r}")
+
+        # Ensure the FEN is valid.
+        rows = fen.split("/")
+        if len(rows) != 8:
+            raise ValueError(f"expected 8 rows in position part of fen: {fen!r}")
+
+        # Validate each row.
+        for row in rows:
+            field_sum = 0
+            previous_was_digit = False
+            previous_was_piece = False
+
+            for c in row:
+                if c in ["1", "2", "3", "4", "5", "6", "7", "8"]:
+                    if previous_was_digit:
+                        raise ValueError(f"two subsequent digits in position part of fen: {fen!r}")
+                    field_sum += int(c)
+                    previous_was_digit = True
+                    previous_was_piece = False
+                elif c == "~":
+                    if not previous_was_piece:
+                        raise ValueError(f"'~' not after piece in position part of fen: {fen!r}")
+                    previous_was_digit = False
+                    previous_was_piece = False
+                elif c.upper() in Piece._symbol_lookup:
+                    field_sum += 1
+                    previous_was_digit = False
+                    previous_was_piece = True
+                else:
+                    raise ValueError(f"invalid character in position part of fen: {fen!r}")
+
+            if field_sum != 8:
+                raise ValueError(f"expected 8 columns per row in position part of fen: {fen!r}")
+
+        # Clear the board.
+        self.clear_board()
+
+        # Put pieces on the board.
+        square_index = 0
+        for c in fen:
+            if c in ["1", "2", "3", "4", "5", "6", "7", "8"]:
+                square_index += int(c)
+            elif c.upper() in Piece._symbol_lookup:
+                piece = Piece.from_symbol(c)
+                self.set_piece_at(SQUARES[square_index].mirror(), piece)
+                square_index += 1
+            elif c == "~":
+                self._promoted |= SQUARES[square_index - 1].mirror()
