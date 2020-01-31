@@ -64,7 +64,7 @@ class Color(int, enum.Enum):
         return 1 if self.value else -1
 
 
-class MaskEnum(enum.IntEnum):
+class MaskEnum(int, enum.Enum):
     """
     Special IntEnum for classes that have associated bit masks.
     Integer value is set to the bit mask to allow bit operations.
@@ -79,9 +79,11 @@ class MaskEnum(enum.IntEnum):
     def mask_from_value(value):
         raise NotImplementedError()
 
-    @property
-    def bit_board(self):
-        return SquareSet(self)
+    def __str__(self):
+        """
+        Print gives bit-board representation.
+        """
+        return str(SquareSet(self))
 
 
 class Square(MaskEnum):
@@ -168,10 +170,6 @@ class File(MaskEnum):
         return 0x0101_0101_0101_0101 << value
 
     A, B, C, D, E, F, G, H = range(8)
-
-    @property
-    def bit_board(self):
-        return SquareSet(self)
 
     @property
     def squares(self):
@@ -364,8 +362,8 @@ class SquareSet:
             return NotImplemented
 
     # Set
-    def __contains__(self, square):
-        return bool(square & self.mask)
+    def __contains__(self, other):
+        return (other & self.mask) == other
 
     def __iter__(self):
         return scan_forward(self.mask)
