@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""
+Python chess library heavily inspired by https://github.com/niklasf/python-chess
+"""
 import enum
 import math
 
@@ -66,7 +69,7 @@ class Color(int, enum.Enum):
 
 class MaskEnum(int, enum.Enum):
     """
-    Special IntEnum for classes that have associated bit masks.
+    Special Enum for classes that have associated bit masks.
     Integer value is set to the bit mask to allow bit operations.
     """
     def __new__(cls, value):
@@ -77,6 +80,9 @@ class MaskEnum(int, enum.Enum):
 
     @staticmethod
     def mask_from_value(value):
+        """
+        Compute mask value from input enum index.
+        """
         raise NotImplementedError()
 
     def __str__(self):
@@ -162,6 +168,10 @@ class Rank(MaskEnum):
     def squares(self):
         for file in FILES:
             yield SQUARES[file.value + self.value * 8]
+
+    @property
+    def name(self):
+        return self._name_.strip("_")
 
 
 class File(MaskEnum):
@@ -522,20 +532,20 @@ class Piece:
         """
         return self.__class__.__name__
 
-    def symbol(self):
+    def symbol(self, invert_color=False):
         """
         Single character representation of piece.
         Uppercase for WHITE, lowercase for BLACK.
         """
-        if self.color is Color.BLACK:
-            return self._symbol.lower()
-        return self._symbol
+        if self.color ^ invert_color:
+            return self._symbol
+        return self._symbol.lower()
 
-    def unicode_symbol(self):
+    def unicode_symbol(self, invert_color=False):
         """
         Unicode representation of piece
         """
-        return self._unicode_symbol_lookup[self.symbol()]
+        return self._unicode_symbol_lookup[self.symbol(invert_color=invert_color)]
 
     def __str__(self):
         return self.symbol()
@@ -1102,6 +1112,9 @@ class BaseBoard:
         else:
             return NotImplemented
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.board_fen()!r})"
+
     def __str__(self):
         """
         Symbolic representation of the entire board.
@@ -1125,8 +1138,50 @@ class BaseBoard:
 
         return "".join(builder)
 
-    def __repr__(self):
-        return f"{self.__class__.__name__}({self.board_fen()!r})"
+    def unicode(self, *, invert_color=False, borders=False):
+        """
+        Returns a string representation of the board with Unicode pieces.
+        Useful for pretty-printing to a terminal.
+
+        Parameters
+        ----------
+            invert_color (bool): invert color of the Unicode pieces
+            borders (bool): show borders and a coordinate margin
+        """
+        separator = "  " + "+--" * 8 + "+\n"
+        builder = []
+        for rank in RANKS[::-1]:
+            if borders:
+                builder.append(separator)
+                builder.append(rank.name)
+
+            for file in FILES:
+                square = msb(file & rank)
+
+                if borders:
+                    builder.append(" |")
+                elif file.value > 0:
+                    builder.append(" ")
+
+                piece = self.piece_at(square)
+                if piece:
+                    builder.append(piece.unicode_symbol(invert_color=invert_color))
+                elif borders:
+                    builder.append(" ")
+                else:
+                    builder.append(u"·")
+
+            if borders:
+                builder.append(" |")
+
+            if borders or rank.value > 0:
+                builder.append("\n")
+
+        if borders:
+            builder.append(separator)
+            builder.append("   a  b  c  d  e  f  g  h")
+
+        return "".join(builder)
 
 
 class Move:
